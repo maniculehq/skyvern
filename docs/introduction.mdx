@@ -38,6 +38,9 @@ Each cycle through this loop is called a **step**. Understanding what happens in
 1. **Screenshot the viewport.** Skyvern captures what's currently on screen, giving the LLM visual context: where buttons are, what forms look like, whether a modal is blocking the page.
 2. **Extract the DOM.** The visible page is scraped into a simplified tree of interactive elements (inputs, buttons, links, dropdowns) with their labels and positions. The LLM uses both the screenshot and the DOM together: the image shows layout and visual context, the DOM provides precise element identifiers that Playwright can target.
 3. **LLM decides the next action.** The screenshot, DOM tree, and your original prompt go to the LLM. It picks which element to interact with and what to do: click, type, select, scroll, upload. If there's data to extract, it pulls that too.
+
+Once the LLM has chosen an action, the loop moves to execution:
+
 4. **Playwright executes.** The action runs in a real Chromium browser. If credentials are needed, they're injected directly into the browser at this point. The LLM never sees passwords, TOTP codes, or credit card numbers.
 5. **Check if the goal is met.** If not, loop back to step 1 and screenshot the now-changed page. If yes, return the results.
 
