@@ -7,23 +7,35 @@ Skyvern automates anything you can do in a browser. You describe what you want i
 
 Traditional browser automation (Selenium, Puppeteer, even Playwright on its own) breaks when a website redesigns. You're constantly patching XPath selectors and waiting for things to fail. Skyvern takes a different approach: it screenshots the page, reads the DOM, and uses a vision LLM to decide what to do next — the same way a person would look at a screen and figure out where to click. That means it works on sites it has never seen before, and keeps working when those sites change.
 
-Here's what a complete automation looks like in three lines of code:
+Here's what a complete automation looks like:
 
 <CodeGroup>
 ```python Python
+import asyncio
 from skyvern import Skyvern
 
-skyvern = Skyvern(api_key="YOUR_API_KEY")
-result = skyvern.agent.run(url="https://news.ycombinator.com", goal="Extract the title and URL of the top post")
-print(result.extracted_information)
+async def main():
+    skyvern = Skyvern(api_key="YOUR_API_KEY")
+    result = await skyvern.run_task(
+        url="https://news.ycombinator.com",
+        prompt="Extract the title and URL of the top post",
+    )
+    print(result.output)
+
+asyncio.run(main())
 ```
 
 ```typescript TypeScript
-import { Skyvern } from "@skyvern/client";
+import { SkyvernClient } from "@skyvern/client";
 
-const skyvern = new Skyvern({ apiKey: "YOUR_API_KEY" });
-const result = await skyvern.agent.run({ url: "https://news.ycombinator.com", goal: "Extract the title and URL of the top post" });
-console.log(result.extractedInformation);
+const client = new SkyvernClient({ apiKey: "YOUR_API_KEY" });
+const result = await client.runTask({
+    body: {
+        url: "https://news.ycombinator.com",
+        prompt: "Extract the title and URL of the top post",
+    },
+});
+console.log(result.output);
 ```
 </CodeGroup>
 
@@ -89,7 +101,7 @@ Most browser automation breaks down at authentication, CAPTCHAs, or dynamic cont
 
 **File operations.** Download files from websites, upload documents to form fields, parse PDFs, CSVs, and Excel files. Downloaded files come back as signed URLs with checksums.
 
-**Proxy and geolocation.** Residential proxies route through real IPs in 30+ countries. Set `proxy_location` per task when you need to appear from a specific region.
+**Proxy and geolocation.** Residential proxies route through real IPs in 20+ countries. Set `proxy_location` per task when you need to appear from a specific region.
 
 **Browser state persistence.** [Sessions](/optimization/browser-sessions) keep a live browser open across multiple tasks for up to 24 hours — useful when you need to chain tasks that share login state. [Profiles](/optimization/browser-profiles) snapshot cookies, auth tokens, and local storage into a reusable package you can restore on future runs, so you don't re-authenticate every time.
 
