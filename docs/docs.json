@@ -39,7 +39,9 @@
     "tabs": [
       {
         "tab": "Home",
-        "pages": ["index"]
+        "pages": [
+          "index"
+        ]
       },
       {
         "tab": "Getting Started",
@@ -47,7 +49,7 @@
           {
             "group": "Getting Started",
             "pages": [
-              "getting-started/introduction",
+              "introduction",
               "getting-started/core-concepts",
               "getting-started/quickstart",
               "getting-started/ai-agents-quickstart"
@@ -199,7 +201,9 @@
       },
       {
         "tab": "Changelog",
-        "pages": ["changelog"]
+        "pages": [
+          "changelog"
+        ]
       },
       {
         "tab": "API Reference",
@@ -283,10 +287,6 @@
     }
   },
   "redirects": [
-    {
-      "source": "/introduction",
-      "destination": "/getting-started/quickstart"
-    },
     {
       "source": "/getting-started/skyvern-in-action",
       "destination": "/getting-started/core-concepts"

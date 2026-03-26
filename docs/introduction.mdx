@@ -1,0 +1,81 @@
+---
+title: What is Skyvern?
+description: AI-powered browser automation that uses LLMs and computer vision to interact with any website, no selectors or scripts required.
+---
+
+Skyvern automates anything you can do in a browser. You describe what you want in plain English, and Skyvern opens a real Chromium browser, looks at the page, and completes the task. No CSS selectors, no scripts, no maintenance when the site changes.
+
+Traditional browser automation (Selenium, Puppeteer, even Playwright on its own) breaks when a website redesigns. You're constantly patching XPath selectors and waiting for things to fail. Skyvern takes a different approach: it screenshots the page, reads the DOM, and uses a vision LLM to decide what to do next. The same way a person would look at a screen and figure out where to click. That means it works on sites it has never seen before, and keeps working when those sites change.
+
+## The agent loop
+
+Every Skyvern automation, whether you trigger it from the dashboard, the API, or a Zapier workflow, runs the same loop:
+
+<img src="/images/skyvern-agent-loop.png" alt="Skyvern agent loop: Screenshot → Extract DOM → LLM reasons → Execute action → Goal check → Repeat" />
+
+Each cycle through this loop is called a **step**. Understanding what happens in each step helps you write better prompts and debug runs when something goes wrong.
+
+1. **Screenshot the viewport.** Skyvern captures what's currently on screen, giving the LLM visual context: where buttons are, what forms look like, whether a modal is blocking the page.
+2. **Extract the DOM.** The visible page is scraped into a simplified tree of interactive elements (inputs, buttons, links, dropdowns) with their labels and positions. The LLM uses both the screenshot and the DOM together: the image shows layout and visual context, the DOM provides precise element identifiers that Playwright can target.
+3. **LLM decides the next action.** The screenshot, DOM tree, and your original prompt go to the LLM. It picks which element to interact with and what to do: click, type, select, scroll, upload. If there's data to extract, it pulls that too.
+4. **Playwright executes.** The action runs in a real Chromium browser. If credentials are needed, they're injected directly into the browser at this point. The LLM never sees passwords, TOTP codes, or credit card numbers.
+5. **Check if the goal is met.** If not, loop back to step 1 and screenshot the now-changed page. If yes, return the results.
+
+A typical task takes 2 to 10 steps. You can set `max_steps` to cap cost during development.
+
+### The Planner-Agent-Validator system
+
+For anything beyond simple single-page tasks, Skyvern wraps the agent loop in a higher-level system with three components:
+
+<img src="/images/skyvern-system-architecture.png" alt="Skyvern architecture: Planner breaks prompt into sub-tasks, Task Agent executes them, Validator confirms completion" />
+
+The **Planner** takes your prompt and breaks it into an ordered sequence of sub-tasks. If you say "log into the vendor portal, download all invoices from January, and save them as PDFs," the Planner sequences that into: navigate to login → authenticate → find the invoice section → loop through January invoices → download each one.
+
+The **Task Agent** picks up each sub-task and runs the agent loop described above. It focuses on one thing at a time, which makes it more reliable than trying to handle a complex multi-page flow in a single pass.
+
+The **Validator** checks whether the overall goal was actually met after the Task Agent finishes. If the Validator determines something was missed or went wrong, it sends feedback back to the Planner, which can re-sequence or retry. This closed-loop feedback is what makes Skyvern reliable on complex workflows where a single missed step would break everything.
+
+## Three ways to use Skyvern
+
+Skyvern fits different levels of technical involvement. Pick the one that matches how you work.
+
+<CardGroup cols={3}>
+  <Card title="Cloud UI" icon="browser" href="/cloud/getting-started/overview">
+    A web dashboard at [app.skyvern.com](https://app.skyvern.com). Run tasks, build workflows visually, manage credentials, and monitor runs. No code required.
+  </Card>
+  <Card title="API & SDKs" icon="code" href="/getting-started/quickstart">
+    Python and TypeScript SDKs, plus a REST API. Integrate browser automation into your own applications. Runs on Skyvern's cloud browsers by default, or launch a local browser on your machine.
+  </Card>
+  <Card title="Self-Hosted" icon="server" href="/self-hosted/overview">
+    Run everything on your own infrastructure with Docker Compose or Kubernetes. Bring your own LLM API keys. Nothing leaves your network.
+  </Card>
+</CardGroup>
+
+## What Skyvern handles for you
+
+Most browser automation breaks down at authentication, CAPTCHAs, or dynamic content. Skyvern handles these natively so you don't have to build workarounds.
+
+**Authentication and credentials.** You store passwords, TOTP secrets, and credit card numbers through the [Credentials API](/cloud/managing-credentials/credentials-overview) or the dashboard. They're encrypted at rest and injected directly into browser fields during execution. The LLM orchestrates the login flow (finds the form, clicks submit, handles 2FA prompts) but never sees the actual credential values. Supports Bitwarden, 1Password, and Azure Key Vault as external sources.
+
+**CAPTCHAs.** Automatically detected and solved during execution. You don't configure anything.
+
+**Structured data extraction.** Pass a [JSON Schema](/running-automations/extract-structured-data) defining exactly what fields you want, and Skyvern extracts typed data that conforms to it. Or skip the schema and let Skyvern infer structure from your prompt.
+
+**File operations.** Download files from websites, upload documents to form fields, parse PDFs, CSVs, and Excel files. Downloaded files come back as signed URLs with checksums.
+
+**Proxy and geolocation.** Residential proxies route through real IPs in 30+ countries. Set `proxy_location` per task when you need to appear from a specific region.
+
+**Browser state persistence.** [Sessions](/optimization/browser-sessions) keep a live browser open across multiple tasks for up to 24 hours, useful when you need to chain tasks that share login state. [Profiles](/optimization/browser-profiles) snapshot cookies, auth tokens, and local storage into a reusable package you can restore on future runs, so you don't re-authenticate every time.
+
+**Multi-step workflows.** When a single task isn't enough, [Workflows](/multi-step-automations/build-a-workflow) chain blocks together: navigate, login, loop through a list, extract data, branch on conditions, send emails. Workflows are parameterized and version-controlled. Build them visually in the dashboard or define them through the API.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book-open" href="/getting-started/core-concepts">
+    Learn the building blocks: tasks, workflows, blocks, runs, credentials, browser sessions, and engines.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/getting-started/quickstart">
+    Run your first browser automation in 5 minutes with the Python or TypeScript SDK.
+  </Card>
+</CardGroup>
