@@ -93,19 +93,19 @@ Skyvern fits different levels of technical involvement. Pick the one that matche
 
 Most browser automation breaks down at authentication, CAPTCHAs, or dynamic content. Skyvern handles these natively so you don't have to build workarounds.
 
-**Authentication and credentials.** You store passwords, TOTP secrets, and credit card numbers through the [Credentials API](/cloud/managing-credentials/credentials-overview) or the dashboard. They're encrypted at rest and injected directly into browser fields during execution. The LLM orchestrates the login flow — finds the form, clicks submit, handles 2FA prompts — but never sees the actual credential values.
+**Authentication and credentials.** You store passwords, TOTP secrets, and credit card numbers through the [Credentials API](cloud/managing-credentials/credentials-overview) or the dashboard. They're encrypted at rest and injected directly into browser fields during execution. The LLM orchestrates the login flow — finds the form, clicks submit, handles 2FA prompts — but never sees the actual credential values.
 
 **CAPTCHAs.** Automatically detected and solved during execution. You don't configure anything.
 
-**Structured data extraction.** Pass a [JSON Schema](/running-automations/extract-structured-data) defining exactly what fields you want, and Skyvern extracts typed data that conforms to it. Or skip the schema and let Skyvern infer structure from your prompt.
+**Structured data extraction.** Pass a [JSON Schema](running-automations/extract-structured-data) defining exactly what fields you want, and Skyvern extracts typed data that conforms to it. Or skip the schema and let Skyvern infer structure from your prompt.
 
 **File operations.** Download files from websites, upload documents to form fields, parse PDFs, CSVs, and Excel files. Downloaded files come back as signed URLs with checksums.
 
 **Proxy and geolocation.** Residential proxies route through real IPs in 20+ countries. Set `proxy_location` per task when you need to appear from a specific region.
 
-**Browser state persistence.** [Sessions](/optimization/browser-sessions) keep a live browser open across multiple tasks for up to 24 hours — useful when you need to chain tasks that share login state. [Profiles](/optimization/browser-profiles) snapshot cookies, auth tokens, and local storage into a reusable package you can restore on future runs, so you don't re-authenticate every time.
+**Browser state persistence.** [Sessions](optimization/browser-sessions) keep a live browser open across multiple tasks for up to 24 hours — useful when you need to chain tasks that share login state. [Profiles](optimization/browser-profiles) snapshot cookies, auth tokens, and local storage into a reusable package you can restore on future runs, so you don't re-authenticate every time.
 
-**Multi-step workflows.** When a single task isn't enough, [Workflows](/multi-step-automations/build-a-workflow) chain blocks together: navigate, login, loop through a list, extract data, branch on conditions, send emails. Workflows are parameterized and version-controlled. Build them visually in the dashboard or define them through the API.
+**Multi-step workflows.** When a single task isn't enough, [Workflows](multi-step-automations/build-a-workflow) chain blocks together: navigate, login, loop through a list, extract data, branch on conditions, send emails. Workflows are parameterized and version-controlled. Build them visually in the dashboard or define them through the API.
 
 ## Next steps
 
