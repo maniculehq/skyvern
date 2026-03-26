@@ -44,7 +44,7 @@ The LLM uses both the screenshot and the DOM together: the image shows layout an
 
 Once the LLM has chosen an action, the loop moves to execution:
 
-4. **Playwright executes.** The action runs in a real Chromium browser. If credentials are needed, they're injected directly into the browser at this point. The LLM never sees passwords, TOTP codes, or credit card numbers.
+4. **Playwright executes.** The action runs in a real Chromium browser. Credentials are injected directly into browser fields at this point — the LLM never sees passwords, TOTP codes, or credit card numbers.
 5. **Check if the goal is met.** If not, loop back to step 1 and screenshot the now-changed page. If yes, return the results.
 
 A typical task takes 2–10 steps. You can set `max_steps` to cap cost during development.
