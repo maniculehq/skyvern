@@ -15,10 +15,10 @@ Workflows are built from blocks. Each block performs one specific operation: nav
 | Category | Blocks |
 |----------|--------|
 | [Browser Automation](#browser-automation) | Browser Task, Browser Action, Extraction, Login, Go to URL, Print Page |
-| [Data and Extraction](#data-and-extraction) | Text Prompt, File Parser |
+| [Data and Extraction](#data-and-extraction) | Text Prompt, File Parser, PDF Parser |
 | [Control Flow](#control-flow) | Loop, Conditional, AI Validation, Code, Wait |
 | [Files](#files) | File Download, Cloud Storage Upload |
-| [Communication](#communication) | Send Email, HTTP Request, Human Interaction |
+| [Communication](#communication) | Send Email, HTTP Request, Human Interaction, Workflow Trigger |
 
 ---
 
@@ -209,6 +209,19 @@ Parse PDFs, CSVs, Excel files, and images to extract structured data.
 <Frame>
 <img src="/images/cloud/file_parse_block.png" alt="File Parser block configuration with File URL, Data Schema, and Model fields" />
 </Frame>
+
+### PDF Parser
+
+Extract structured data specifically from PDF files. A focused alternative to File Parser when you know the input is a PDF.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **File URL** | text | URL or parameter reference to the PDF file |
+| **Data Schema** | JSON | JSON Schema defining the output format. Enable the checkbox to reveal the editor. |
+
+<Note>
+Use **File Parser** when you need to handle multiple file types (CSV, Excel, images). Use **PDF Parser** when you know you're working with PDFs and want a simpler configuration.
+</Note>
 
 ---
 
@@ -426,3 +439,78 @@ Additional fields in **Advanced Settings:**
 <Frame>
 <img src="/images/cloud/human_block.png" alt="Human Interaction block configuration with Instructions For Human and Timeout fields" />
 </Frame>
+
+### Workflow Trigger
+
+Trigger another workflow from inside the current one and optionally wait for it to complete before continuing. Use this to compose large workflows from smaller reusable components.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **Workflow ID** | text | The ID of the workflow to trigger |
+| **Parameters** | JSON | Input parameters to pass to the triggered workflow |
+| **Wait for Completion** | boolean | Pause the current workflow until the triggered workflow finishes |
+
+<Note>
+The triggered workflow runs as a separate workflow run. Its output can be referenced by downstream blocks in the parent workflow using the standard `{{ label_output }}` syntax if you capture it with an output parameter.
+</Note>
+
+---
+
+## Parameter templating
+
+Every block field that accepts text also accepts **Jinja2 template expressions** to reference output from upstream blocks, workflow-level parameters, and loop variables.
+
+### Referencing block output
+
+Use `{{ label_output }}` to reference the output value of the block with label `label`:
+
+```
+{{ extract_prices_output }}
+```
+
+If the output is an object, access nested fields with dot notation:
+
+```
+{{ extract_prices_output.items[0].price }}
+```
+
+### Referencing workflow parameters
+
+Workflow-level parameters (defined in **Workflow Settings → Parameters**) are available by their key name:
+
+```
+{{ customer_id }}
+{{ start_date }}
+```
+
+### Loop variables
+
+Inside a Loop block, three reserved variables are available in all child blocks:
+
+| Variable | Description |
+|----------|-------------|
+| `{{ current_value }}` | The current item in the loop |
+| `{{ current_index }}` | The current iteration index (0-based) |
+| `{{ current_item }}` | Alias for `current_value` |
+
+**Example** — using the current item in a Browser Task prompt:
+
+```
+Navigate to the order page for order ID {{ current_value }} and extract the status.
+```
+
+### Parameter types
+
+When you add workflow parameters (in the **Parameters** panel), you can choose from several types:
+
+| Type | Description |
+|------|-------------|
+| **Context Parameter** | A static value defined when the workflow is created |
+| **Output Parameter** | Captures the output of a specific block for use downstream |
+| **Workflow Parameter** | A runtime value passed in when the workflow is triggered |
+| **AWS Secret** | Fetches a value from AWS Secrets Manager at run time |
+| **Azure Key Vault** | Fetches a value from Azure Key Vault at run time |
+| **Bitwarden** | Fetches a credential from Bitwarden |
+| **1Password** | Fetches a credential from 1Password |
+
+See [Add Parameters](/cloud/building-workflows/add-parameters) for full setup instructions.

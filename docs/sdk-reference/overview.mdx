@@ -156,6 +156,317 @@ These override the client-level defaults for that single call only.
 
 ---
 
+## Browser automation
+
+The `Skyvern` class provides methods to launch and connect to browsers — both on your local machine and in Skyvern's cloud infrastructure. Once you have a browser, you interact with it through a hierarchy of three objects:
+
+| Class | Role |
+|-------|------|
+| `SkyvernBrowser` | Wraps a Playwright `BrowserContext`. Manages tabs and cloud session lifecycle. |
+| `SkyvernBrowserPage` | Wraps a Playwright `Page`. Gives you every standard Playwright page method plus AI capabilities. |
+| `SkyvernBrowserPageAgent` | Accessed via `page.agent`. Runs AI tasks, login workflows, downloads, and multi-step workflows in the live browser. |
+
+<Tip>
+`SkyvernBrowser` inherits all Playwright `BrowserContext` methods, and `SkyvernBrowserPage` inherits all Playwright `Page` methods. You can use `goto`, `click`, `fill`, `screenshot`, `keyboard`, `mouse`, network interception — everything from the Playwright API — directly on these objects, alongside Skyvern's AI methods.
+</Tip>
+
+---
+
+### Launching and connecting to browsers
+
+Use one of the following `Skyvern` client methods to obtain a `SkyvernBrowser`. Which method you use depends on whether you are running locally or in the cloud.
+
+<Warning>
+`launch_local_browser` is only available when running Skyvern in **local/embedded mode** (`Skyvern.local()`). Calling it against a cloud client raises an error.
+
+`launch_cloud_browser` and `use_cloud_browser` are only available when the client is configured for **cloud mode** (`Skyvern(api_key=...)`). Calling them in local mode raises `ValueError: Cloud browser sessions are supported only in the cloud environment`.
+</Warning>
+
+<Tabs>
+  <Tab title="Local mode">
+
+#### `launch_local_browser`
+
+Launches a Chromium browser on your local machine with Chrome DevTools Protocol (CDP) enabled on the specified port. The browser persists its profile to a temporary directory (or a custom `user_data_dir`) so cookies, storage, and extensions survive restarts.
+
+```python
+browser = await client.launch_local_browser(
+    headless=False,
+    port=9222,
+    args=["--window-size=1920,1080"],
+    user_data_dir="/tmp/my-browser-profile",
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `headless` | `bool` | `False` | Run without a visible window. |
+| `port` | `int` | `9222` | CDP remote debugging port. |
+| `args` | `list[str] \| None` | `None` | Extra Chromium command-line flags. |
+| `user_data_dir` | `str \| None` | `None` | Path for the browser profile. Defaults to a temp directory at `<tmpdir>/skyvern-browser`. |
+
+**Returns:** `SkyvernBrowser`
+
+  </Tab>
+  <Tab title="Cloud mode">
+
+#### `launch_cloud_browser`
+
+Creates a brand-new cloud-hosted browser session in Skyvern's infrastructure and connects to it. Every call provisions a fresh session.
+
+```python
+from skyvern.schemas.runs import ProxyLocation
+
+browser = await client.launch_cloud_browser(
+    timeout=60,
+    proxy_location=ProxyLocation.RESIDENTIAL,
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `timeout` | `int \| None` | `60` | Session lifetime in minutes (5–1440). Timer starts when the session is ready. |
+| `proxy_location` | `ProxyLocation \| None` | `None` | Geographic proxy location for browser traffic. |
+
+**Returns:** `SkyvernBrowser`
+
+---
+
+#### `use_cloud_browser`
+
+Gets the most recently started idle cloud session, or creates one if none exists. Prefer this over `launch_cloud_browser` when you want to reuse sessions across calls.
+
+```python
+browser = await client.use_cloud_browser(
+    timeout=60,
+    proxy_location=ProxyLocation.RESIDENTIAL,
+)
+```
+
+Same parameters as `launch_cloud_browser`. The `timeout` and `proxy_location` are used only when creating a new session.
+
+<Note>
+An "idle" session is one with a `browser_address`, has been `started_at`, and is not currently running a task (`runnable_id` is `None`). If multiple idle sessions exist, the most recently started one is chosen.
+</Note>
+
+**Returns:** `SkyvernBrowser`
+
+  </Tab>
+  <Tab title="Connect to existing">
+
+#### `connect_to_browser_over_cdp`
+
+Connects to any browser already running with CDP enabled — local or remote.
+
+```python
+browser = await client.connect_to_browser_over_cdp(
+    cdp_url="http://localhost:9222",
+)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cdp_url` | `str` | The CDP endpoint URL, e.g. `http://localhost:9222`. |
+
+**Returns:** `SkyvernBrowser`
+
+---
+
+#### `connect_to_cloud_browser_session`
+
+Reconnects to a cloud browser session that already exists by ID. Useful when you want to resume work in a session across multiple script invocations.
+
+```python
+browser = await client.connect_to_cloud_browser_session(
+    browser_session_id="bsess_abc123",
+)
+```
+
+**Returns:** `SkyvernBrowser`
+
+  </Tab>
+</Tabs>
+
+---
+
+### `aclose()`
+
+Shuts down Playwright and releases all resources held by the `Skyvern` client, including the embedded server transport in local mode.
+
+```python
+await client.aclose()
+```
+
+<Tip>
+Call `aclose()` in a `finally` block. In local/embedded mode it also tears down the in-process server.
+</Tip>
+
+---
+
+### `SkyvernBrowser`
+
+`SkyvernBrowser` is returned by every browser launch/connect method. It wraps a Playwright `BrowserContext` and proxies all standard `BrowserContext` calls transparently — so you can call `browser.cookies()`, `browser.grant_permissions()`, and everything else Playwright exposes.
+
+#### Page methods
+
+```python
+# Get the most recently active tab, or create one if none exists
+page = await browser.get_working_page()
+
+# Always open a fresh tab
+page = await browser.new_page()
+
+# Wrap an existing raw Playwright Page reference
+skyvern_page = await browser.get_page_for(playwright_page)
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get_working_page()` | `SkyvernBrowserPage` | Returns the last open tab, creating one if the context has no pages. |
+| `new_page()` | `SkyvernBrowserPage` | Opens a new tab in this browser context. |
+| `get_page_for(page)` | `SkyvernBrowserPage` | Wraps an existing Playwright `Page` with Skyvern capabilities. |
+
+#### `close()`
+
+Closes the browser context. If this is a cloud session (`browser_session_id` is set), the cloud session is also terminated via the API.
+
+```python
+await browser.close()
+```
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `browser_session_id` | `str \| None` | Skyvern cloud session ID. `None` for local browsers. |
+| `browser_address` | `str \| None` | CDP address (e.g. `http://localhost:9222`). `None` for cloud browsers. |
+| `skyvern` | `Skyvern` | Back-reference to the `Skyvern` client that created this browser. |
+
+---
+
+### `SkyvernBrowserPage`
+
+`SkyvernBrowserPage` combines the full Playwright `Page` API with Skyvern-specific methods. All standard Playwright methods (`goto`, `click`, `fill`, `type`, `screenshot`, `wait_for_selector`, `evaluate`, `keyboard`, `mouse`, etc.) are available directly.
+
+#### AI action: `act`
+
+Perform a single action on the current page state using natural language.
+
+```python
+await page.act("Click the Accept cookies button")
+await page.act("Fill the search box with 'quarterly report 2024'")
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | Natural language description of the action. |
+| `skip_refresh` | `bool` | `False` | Skip refreshing the page state before acting. |
+| `use_economy_tree` | `bool` | `False` | Use a lighter accessibility tree for faster analysis. |
+
+<Note>
+`act` performs a **single atomic action**. For multi-step goals like "log in and navigate to invoices", use `page.agent.run_task()` instead.
+</Note>
+
+#### Frame methods
+
+```python
+# Switch to an iframe by CSS selector
+await page.frame_switch(selector="#payment-iframe")
+
+# Switch by frame name attribute
+await page.frame_switch(name="checkout")
+
+# Switch by index in the frames list
+await page.frame_switch(index=1)
+
+# Return to the main frame
+page.frame_main()
+
+# List all frames on the page
+frames = await page.frame_list()
+```
+
+| Method | Description |
+|--------|-------------|
+| `frame_switch(selector=, name=, or index=)` | Sets the working iframe. Exactly one parameter required. |
+| `frame_main()` | Clears the working iframe, returning to the main frame. |
+| `frame_list()` | Returns `list[dict]` with `index`, `name`, `url`, `is_main` per frame. |
+
+#### `agent` attribute
+
+`page.agent` is a `SkyvernBrowserPageAgent`. All agent methods run inside the live browser session and **block until the run reaches a terminal state**.
+
+| Method | Description |
+|--------|-------------|
+| `run_task(prompt, ...)` | Run a general-purpose AI task. Returns `TaskRunResponse`. |
+| `login(credential_type, ...)` | Run a login workflow using stored credentials. Returns `WorkflowRunResponse`. |
+| `download_files(prompt, ...)` | Run a file download task. Returns `WorkflowRunResponse`. |
+| `run_workflow(workflow_id, ...)` | Run a pre-built workflow in this browser. Returns `WorkflowRunResponse`. |
+
+See the [Browser Sessions](/sdk-reference/browser-sessions) page for full parameter details on each agent method.
+
+---
+
+### End-to-end example
+
+```python
+import asyncio
+from skyvern import Skyvern
+from skyvern.schemas.run_blocks import CredentialType
+from skyvern.schemas.runs import ProxyLocation
+
+async def main() -> None:
+    # Cloud mode
+    client = Skyvern(api_key="YOUR_API_KEY")
+
+    # Reuse an existing idle browser session, or launch a new one
+    browser = await client.use_cloud_browser(
+        timeout=60,
+        proxy_location=ProxyLocation.RESIDENTIAL,
+    )
+
+    try:
+        page = await browser.get_working_page()
+
+        # Manual Playwright navigation
+        await page.goto("https://app.example.com/login")
+        await page.wait_for_load_state("networkidle")
+
+        # AI-powered login with stored credentials
+        await page.agent.login(
+            credential_type=CredentialType.skyvern,
+            credential_id="cred_abc123",
+        )
+
+        # Manual step after login
+        await page.click("#nav-reports")
+        await page.wait_for_selector(".report-table")
+
+        # AI task with structured extraction
+        result = await page.agent.run_task(
+            prompt="Find the three most recent invoices with their IDs, dates, and totals",
+            data_extraction_schema={
+                "invoices": {
+                    "type": "array",
+                    "items": {"id": "string", "date": "string", "total_usd": "number"},
+                }
+            },
+            max_steps=15,
+            timeout=300,
+        )
+        print("Extracted:", result.output)
+
+        await page.screenshot(path="invoices.png", full_page=True)
+
+    finally:
+        await browser.close()
+        await client.aclose()
+
+asyncio.run(main())
+```
+
+---
+
 ## Next steps
 
 <CardGroup cols={2}>
@@ -179,6 +490,20 @@ These override the client-level defaults for that single call only.
     href="/sdk-reference/browser-sessions"
   >
     Maintain live browser state between calls
+  </Card>
+  <Card
+    title="Workflow Scripts"
+    icon="code"
+    href="/sdk-reference/workflow-scripts"
+  >
+    Write workflows in Python with the script decorator API
+  </Card>
+  <Card
+    title="Credentials"
+    icon="key"
+    href="/sdk-reference/credentials"
+  >
+    Store and manage login credentials
   </Card>
   <Card
     title="Error Handling"

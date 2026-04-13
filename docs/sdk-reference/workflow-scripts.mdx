@@ -1,0 +1,827 @@
+---
+title: Workflow Scripts
+description: Write Skyvern workflows in Python using the script decorator API
+slug: sdk-reference/workflow-scripts
+---
+
+Skyvern's script API lets you write workflow logic as regular Python `async` functions. Instead of building blocks visually in the UI, you import action functions and compose them in code — with full access to Python's conditionals, loops, error handling, and testing tools.
+
+Both scripts and the no-code builder compile down to the same block engine, so you can mix approaches: build a workflow in the UI, export its generated script, and edit it in your editor.
+
+---
+
+## Scripts vs. the no-code builder
+
+| | Scripts | No-code builder |
+|---|---|---|
+| **Control flow** | Full Python — `if`, `for`, `try/except`, generators | Visual conditional and loop blocks |
+| **Testability** | Unit-testable with `pytest` | Visual run history and step replay |
+| **Iteration speed** | Edit code, re-run | Drag-and-drop, no redeploy |
+| **Caching** | `@cached` decorates each block | Automatic per block |
+| **Best for** | Complex logic, reusable libraries, CI/CD | Rapid prototyping, non-engineers |
+
+<Tip>
+Start in the UI, then export the generated Python file to get a ready-to-edit script with `@cached` stubs already filled in.
+</Tip>
+
+---
+
+## The `@workflow` decorator
+
+```python
+from skyvern import workflow
+```
+
+Wrap a top-level `async def run_workflow(parameters: dict) -> None` with `@workflow` to register it as a Skyvern workflow run.
+
+```python
+@workflow(
+    title="My workflow",
+    webhook_url="https://myapp.example.com/webhook",
+    max_steps=100,
+)
+async def run_workflow(parameters: dict) -> None:
+    ...
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `title` | `str \| None` | `None` | Human-readable display name shown in the dashboard. |
+| `totp_url` | `str \| None` | `None` | URL Skyvern calls to fetch one-time TOTP codes for 2FA. |
+| `totp_identifier` | `str \| None` | `None` | Identifier passed to the TOTP provider. |
+| `webhook_url` | `str \| None` | `None` | URL to receive a POST when the workflow run finishes. |
+| `max_steps` | `int \| None` | `None` | Hard cap on total AI agent steps across all blocks. |
+
+<Note>
+The entry-point function must be named `run_workflow` and must accept a single `parameters: dict` argument. The script runner calls `await run_workflow(parameters=...)` after loading the module.
+</Note>
+
+---
+
+## The `@cached` decorator
+
+```python
+from skyvern import cached, RunContext, SkyvernPage
+```
+
+`@cached` marks a function as the cached implementation for a specific workflow block. When Skyvern runs the workflow in `run_with: code` mode, it calls your function instead of invoking the AI agent for that block.
+
+```python
+@cached(cache_key="login_block")
+async def _login(page: SkyvernPage, context: RunContext) -> None:
+    await page.fill("#email", context.parameters["email"])
+    await page.fill("#password", context.parameters["password"])
+    await page.click("button[type=submit]")
+```
+
+### Signature
+
+```python
+def cached(cache_key: str) -> Callable
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cache_key` | `str` | The block label this function implements. Must match the `label=` passed to the corresponding action call (e.g., `login(..., label="login_block")`). |
+
+The decorated function **must** have the signature:
+
+```python
+async def fn(page: SkyvernPage, context: RunContext, ...) -> Any
+```
+
+`page` is the live Playwright-compatible page object. `context` holds run parameters and loop metadata. Additional positional or keyword arguments may be added; they are forwarded from the block inputs.
+
+<Warning>
+If the cached function raises an exception, Skyvern automatically falls back to the AI agent for that block (unless the exception is `ScriptTerminationException`, which halts the run immediately).
+</Warning>
+
+---
+
+## `RunContext`
+
+`RunContext` is passed as the second argument to every `@cached` function. It provides read access to the current run's parameters and loop state.
+
+```python
+from skyvern import RunContext
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `parameters` | `dict` | Workflow input parameters, plus any upstream block outputs that have been written back. Access values like `context.parameters["my_param"]`. |
+| `page` | `SkyvernPage` | The current browser page (same object passed as the first argument). |
+| `prompt` | `str \| None` | The prompt string for the current block, injected by the script service. |
+| `loop_value` | `Any \| None` | The current iteration value when the block is running inside a `loop()`. Equivalent to `item.current_value`. |
+
+---
+
+## Action functions
+
+All action functions are importable directly from `skyvern`:
+
+```python
+from skyvern import (
+    goto, login, action, extract, run_task,
+    download, validate, wait, loop,
+    prompt, http_request, run_code,
+    send_email, parse_pdf, parse_file,
+    upload_file, render_template, render_list,
+    conditional,
+)
+```
+
+Every action function is a coroutine (`async def`). Call them with `await` inside `run_workflow` or any async function it calls.
+
+---
+
+### `run_task`
+
+Navigate to a URL and complete an open-ended task using the AI agent. Returns the task output.
+
+```python
+result = await run_task(
+    prompt="Fill in the contact form with the provided details and submit it",
+    url="https://example.com/contact",
+    label="fill_contact_form",
+)
+```
+
+```python
+async def run_task(
+    prompt: str,
+    url: str | None = None,
+    max_steps: int | None = None,
+    download_suffix: str | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    engine: RunEngine = RunEngine.skyvern_v1,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> dict | list | str | None
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | `str` | Natural-language description of the task to complete. Supports Jinja2 templates. |
+| `url` | `str \| None` | Navigate to this URL before running. Omit to operate on the current page. |
+| `max_steps` | `int \| None` | Cap AI steps for this block. |
+| `download_suffix` | `str \| None` | Expected file extension for downloaded files. |
+| `totp_identifier` | `str \| None` | Identifier for TOTP 2FA. |
+| `totp_url` | `str \| None` | URL to fetch TOTP codes. |
+| `label` | `str \| None` | Block label used for output parameter wiring and cache lookup. |
+| `cache_key` | `str \| None` | Override the cache key separately from the label. Defaults to `label`. |
+| `engine` | `RunEngine` | Execution engine. Default is `RunEngine.skyvern_v1`. |
+| `model` | `dict \| None` | LLM model override for this block. |
+| `error_code_mapping` | `dict[str, str] \| None` | Map failure descriptions to error codes. |
+
+---
+
+### `extract`
+
+Extract structured data from the current page (or a URL) using the AI agent.
+
+```python
+items = await extract(
+    prompt="Extract all job listings as a list of objects with title, company, and location",
+    schema={"type": "array", "items": {"type": "object", "properties": {"title": {"type": "string"}, "company": {"type": "string"}, "location": {"type": "string"}}}},
+    url="https://jobs.example.com",
+    label="extract_jobs",
+)
+```
+
+```python
+async def extract(
+    prompt: str,
+    schema: dict | list | str | None = None,
+    url: str | None = None,
+    max_steps: int | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+) -> dict | list | str | None
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | `str` | Describes what to extract from the page. |
+| `schema` | `dict \| list \| str \| None` | JSON Schema constraining the output shape. |
+| `url` | `str \| None` | Navigate to this URL before extracting. |
+| `max_steps` | `int \| None` | Cap AI steps for this block. |
+| `label` | `str \| None` | Block label for output wiring and cache lookup. |
+| `cache_key` | `str \| None` | Override the cache key. Defaults to `label`. |
+| `model` | `dict \| None` | LLM model override. |
+
+---
+
+### `action`
+
+Perform a targeted browser action (click, fill, select, etc.) without expecting a return value.
+
+```python
+await action(
+    prompt="Click the 'Accept all cookies' button if it appears",
+    label="accept_cookies",
+)
+```
+
+```python
+async def action(
+    prompt: str,
+    url: str | None = None,
+    max_steps: int | None = None,
+    download_suffix: str | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> None
+```
+
+---
+
+### `login`
+
+Navigate to a URL and complete a login flow. Skyvern handles 2FA automatically if `totp_identifier` or `totp_url` is set.
+
+```python
+await login(
+    prompt="Log in with the provided credentials",
+    url="https://app.example.com/login",
+    totp_identifier="my_totp_key",
+    label="login_step",
+)
+```
+
+```python
+async def login(
+    prompt: str,
+    url: str | None = None,
+    max_steps: int | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> None
+```
+
+---
+
+### `download`
+
+Navigate to a URL and download a file.
+
+```python
+await download(
+    prompt="Download the latest quarterly report PDF",
+    url="https://investor.example.com/reports",
+    complete_on_download=True,
+    download_suffix=".pdf",
+    label="download_report",
+)
+```
+
+```python
+async def download(
+    prompt: str,
+    url: str | None = None,
+    complete_on_download: bool = True,
+    download_suffix: str | None = None,
+    max_steps: int | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `complete_on_download` | `bool` | Mark the block complete as soon as a download starts, rather than waiting for the agent to finish navigating. Default `True`. |
+| `download_suffix` | `str \| None` | Expected file extension (e.g., `".pdf"`). |
+
+---
+
+### `goto`
+
+Navigate the browser to a URL directly, without AI interaction.
+
+```python
+await goto(url="https://dashboard.example.com/settings", label="open_settings")
+```
+
+```python
+async def goto(
+    url: str,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `url` | `str` | The URL to navigate to. Supports Jinja2 templates (e.g., `"https://example.com/items/{{ item_id }}"`). |
+| `parameters` | `list[str] \| None` | Parameter keys whose values are injected into the block's template context. |
+
+---
+
+### `validate`
+
+Use the AI agent to evaluate a pass/fail criterion against the current page. If `terminate_criterion` is met, the entire workflow run is halted immediately.
+
+```python
+await validate(
+    complete_criterion="The order confirmation page is visible and shows an order number",
+    terminate_criterion="An error message is displayed on the page",
+    label="confirm_order",
+)
+```
+
+```python
+async def validate(
+    complete_criterion: str | None = None,
+    terminate_criterion: str | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+    label: str | None = None,
+    model: dict | None = None,
+) -> None
+```
+
+At least one of `complete_criterion` or `terminate_criterion` must be provided.
+
+---
+
+### `wait`
+
+Pause execution for a fixed number of seconds.
+
+```python
+await wait(seconds=3, label="pause_after_submit")
+```
+
+```python
+async def wait(seconds: int, label: str | None = None) -> None
+```
+
+---
+
+### `prompt`
+
+Send a text prompt to the LLM and return a structured response — no browser interaction.
+
+```python
+summary = await prompt(
+    prompt="Summarize the following job description in two sentences: {{ job_description }}",
+    schema={"type": "object", "properties": {"summary": {"type": "string"}}},
+    label="summarize_jd",
+)
+```
+
+```python
+async def prompt(
+    prompt: str,
+    schema: dict | None = None,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+    model: dict | None = None,
+) -> dict | list | str | None
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | `str` | The text prompt. Supports Jinja2 templates. |
+| `schema` | `dict \| None` | JSON Schema for the response. |
+| `parameters` | `list[str] \| None` | Workflow parameter keys to inject into the template context. |
+| `model` | `dict \| None` | LLM model override. |
+
+---
+
+### `http_request`
+
+Make an HTTP request from within the workflow — useful for webhooks, API calls, or retrieving data.
+
+```python
+await http_request(
+    method="POST",
+    url="https://api.example.com/results",
+    headers={"Authorization": "Bearer {{ api_token }}"},
+    body={"run_id": "{{ run_id }}", "result": "success"},
+    label="post_results",
+)
+```
+
+```python
+async def http_request(
+    method: str,
+    url: str,
+    headers: dict[str, str] | None = None,
+    body: dict | None = None,
+    timeout: int = 30,
+    follow_redirects: bool = True,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+---
+
+### `run_code`
+
+Execute an arbitrary Python code string inside a sandboxed block. The code can read from and write to workflow parameters.
+
+```python
+result = await run_code(
+    code="output = {'doubled': input_value * 2}",
+    label="double_value",
+    parameters=["input_value"],
+)
+```
+
+```python
+async def run_code(
+    code: str,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> dict
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `code` | `str` | Python code to execute. Must assign results to `output`. |
+| `parameters` | `list[str] \| None` | Workflow parameter keys made available as local variables inside the code. |
+
+---
+
+### `loop`
+
+Iterate over a list of values. Each iteration yields a `SkyvernLoopItem` with `current_value`, `current_index`, and `current_item` attributes.
+
+See [Working with loops](#working-with-loops) for the full usage pattern.
+
+```python
+async def loop(
+    values: list | str,
+    complete_if_empty: bool = False,
+    label: str | None = None,
+) -> AsyncGenerator[SkyvernLoopItem, None]
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `values` | `list \| str` | The list to iterate over, or a parameter key (string) that resolves to a list at runtime. |
+| `complete_if_empty` | `bool` | If `True`, mark the block complete when `values` is empty. If `False` (default), the block fails on empty input. |
+| `label` | `str \| None` | Block label. Loop outputs are aggregated under this label. |
+
+---
+
+### `conditional`
+
+Evaluate a conditional block whose logic is implemented by a `@cached` function. The cached function must return a `dict` containing `next_block_label` (and optionally `branch_index`).
+
+```python
+result = await conditional(label="route_by_status")
+```
+
+```python
+async def conditional(label: str) -> dict
+```
+
+A matching `@cached` function must be registered with the same `cache_key`:
+
+```python
+@cached(cache_key="route_by_status")
+async def _route_by_status(page: SkyvernPage, context: RunContext) -> dict:
+    status = context.parameters.get("order_status", "")
+    if status == "pending":
+        return {"next_block_label": "handle_pending", "branch_index": 0}
+    return {"next_block_label": "handle_complete", "branch_index": 1}
+```
+
+---
+
+### `send_email`
+
+Send an email using SMTP. Requires `smtp_host`, `smtp_port`, `smtp_username`, and `smtp_password` workflow parameters to be configured.
+
+```python
+await send_email(
+    sender="noreply@example.com",
+    recipients=["team@example.com"],
+    subject="Workflow complete — {{ run_id }}",
+    body="The workflow finished successfully. Results attached.",
+    file_attachments=["{{ report_file_url }}"],
+    label="notify_team",
+)
+```
+
+```python
+async def send_email(
+    sender: str,
+    recipients: list[str] | str,
+    subject: str,
+    body: str,
+    file_attachments: list[str] = [],
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+---
+
+### `parse_pdf`
+
+Parse a PDF file and extract structured data from it.
+
+```python
+await parse_pdf(
+    file_url="{{ downloaded_report_url }}",
+    schema={"type": "object", "properties": {"revenue": {"type": "number"}, "quarter": {"type": "string"}}},
+    label="parse_report",
+)
+```
+
+```python
+async def parse_pdf(
+    file_url: str,
+    schema: dict | None = None,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+---
+
+### `parse_file`
+
+Parse a non-PDF file (image, CSV, etc.) and extract structured data.
+
+```python
+async def parse_file(
+    file_url: str,
+    file_type: FileType,
+    schema: dict | None = None,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+    model: dict | None = None,
+) -> None
+```
+
+`file_type` is a `FileType` enum value (e.g., `FileType.csv`, `FileType.image`).
+
+---
+
+### `upload_file`
+
+Upload a downloaded file to external storage (S3 or Azure Blob).
+
+```python
+await upload_file(
+    label="upload_to_s3",
+    storage_type=FileStorageType.S3,
+    s3_bucket="my-results-bucket",
+    aws_access_key_id="{{ aws_key_id }}",
+    aws_secret_access_key="{{ aws_secret }}",
+    region_name="us-east-1",
+)
+```
+
+```python
+async def upload_file(
+    label: str | None = None,
+    parameters: list[str] | None = None,
+    storage_type: FileStorageType = FileStorageType.S3,
+    s3_bucket: str | None = None,
+    aws_access_key_id: str | None = None,
+    aws_secret_access_key: str | None = None,
+    region_name: str | None = None,
+    azure_storage_account_name: str | None = None,
+    azure_storage_account_key: str | None = None,
+    azure_blob_container_name: str | None = None,
+    path: str | None = None,
+) -> None
+```
+
+---
+
+### `render_template`
+
+Render a Jinja2 template string against the current workflow context. Returns the rendered string.
+
+```python
+message = render_template(
+    template="Hello, {{ user_name }}! Your order {{ order_id }} is ready.",
+    data={"user_name": "Alice", "order_id": "ORD-001"},
+)
+```
+
+```python
+def render_template(template: str, data: dict | None = None) -> str
+```
+
+This is a synchronous utility — no `await` required. Workflow run context values are automatically available in the template; pass `data` to inject additional values.
+
+---
+
+### `render_list`
+
+Render a Jinja2 template that evaluates to a Python list literal, then parse and return it.
+
+```python
+urls = render_list(
+    template="{{ page_urls }}",
+    data={"page_urls": "['https://a.com', 'https://b.com']"},
+)
+```
+
+```python
+def render_list(template: str, data: dict | None = None) -> list[str]
+```
+
+---
+
+## Working with loops
+
+`loop()` is an async generator. Use `async for` to iterate. The loop block aggregates all iteration outputs automatically.
+
+```python
+async for item in loop(values=product_ids, label="process_products"):
+    product_id = item.current_value
+    index = item.current_index
+
+    await goto(
+        url=f"https://store.example.com/products/{product_id}",
+        label=f"open_product_{index}",
+    )
+    details = await extract(
+        prompt="Extract the product name, price, and stock status",
+        label=f"extract_product_{index}",
+    )
+    await http_request(
+        method="POST",
+        url="https://api.example.com/inventory",
+        body={"product_id": product_id, "details": details},
+        label=f"post_product_{index}",
+    )
+```
+
+### `SkyvernLoopItem` attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `current_value` | `Any` | The value for this iteration. |
+| `current_index` | `int` | Zero-based iteration index. |
+| `current_item` | `Any` | Alias for `current_value`. |
+
+<Tip>
+Inside a `@cached` function running within a loop, use `context.loop_value` to read `current_value` without needing the `item` object.
+</Tip>
+
+You can also pass a parameter key as a string to `loop()` when the list is resolved at runtime from a previous block's output:
+
+```python
+# "product_ids" is the label of an earlier extract() block
+async for item in loop(values="product_ids", label="process_products"):
+    ...
+```
+
+---
+
+## Complete example
+
+The following script logs in, extracts a list of open support tickets, processes each one, and sends a summary email when done. The login step uses a `@cached` implementation so it runs as fast Playwright code on subsequent runs.
+
+```python
+from skyvern import (
+    workflow,
+    cached,
+    goto,
+    login,
+    extract,
+    loop,
+    run_task,
+    http_request,
+    validate,
+    send_email,
+    RunContext,
+    SkyvernPage,
+)
+
+
+@cached(cache_key="login_helpdesk")
+async def _login_helpdesk(page: SkyvernPage, context: RunContext) -> None:
+    """Cached login: fills credentials directly via Playwright."""
+    await page.fill('input[name="email"]', context.parameters["helpdesk_email"])
+    await page.fill('input[name="password"]', context.parameters["helpdesk_password"])
+    await page.click('button[type="submit"]')
+    await page.wait_for_url("**/dashboard**", timeout=10000)
+
+
+@workflow(
+    title="Process open support tickets",
+    webhook_url="{{ webhook_url }}",
+    max_steps=200,
+)
+async def run_workflow(parameters: dict) -> None:
+    # Step 1 — navigate to the helpdesk and log in
+    await goto(url="https://helpdesk.example.com/login", label="open_login")
+    await login(
+        prompt="Log in with the provided credentials",
+        totp_identifier=parameters.get("totp_identifier"),
+        label="login_helpdesk",
+    )
+
+    # Step 2 — extract the list of open tickets
+    tickets = await extract(
+        prompt="Extract all open tickets as a list. Each ticket should have id, subject, and priority.",
+        schema={
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "priority": {"type": "string"},
+                },
+            },
+        },
+        url="https://helpdesk.example.com/tickets?status=open",
+        label="extract_tickets",
+    )
+
+    if not tickets:
+        return
+
+    # Step 3 — process each ticket
+    processed = []
+    async for item in loop(values=tickets, label="ticket_loop"):
+        ticket = item.current_value
+        ticket_id = ticket["id"]
+
+        # Run an agent task to add a standard first-response comment
+        await run_task(
+            prompt=f"Open ticket {ticket_id} and add the comment: 'Thank you for reaching out — we are looking into this.'",
+            url=f"https://helpdesk.example.com/tickets/{ticket_id}",
+            label=f"respond_ticket_{item.current_index}",
+        )
+
+        # Log each processed ticket to an external API
+        await http_request(
+            method="POST",
+            url="https://api.example.com/ticket-log",
+            headers={"Authorization": "Bearer {{ api_token }}"},
+            body={"ticket_id": ticket_id, "priority": ticket["priority"], "status": "responded"},
+            label=f"log_ticket_{item.current_index}",
+        )
+
+        processed.append(ticket_id)
+
+    # Step 4 — confirm the queue is now empty
+    await validate(
+        complete_criterion="The open tickets list shows zero open tickets, or all visible tickets have been responded to",
+        terminate_criterion="An error banner or authentication failure message is visible",
+        label="verify_complete",
+    )
+
+    # Step 5 — send a summary notification
+    await send_email(
+        sender="automation@example.com",
+        recipients=["support-lead@example.com"],
+        subject=f"Ticket sweep complete — {len(processed)} tickets responded",
+        body=f"Processed ticket IDs: {', '.join(processed)}",
+        label="send_summary",
+    )
+```
+
+<Accordion title="Running the script locally">
+You can execute a script file directly using Skyvern's `run_script` helper, which loads the module and calls `run_workflow`:
+
+```python
+import asyncio
+from skyvern import run_script
+
+asyncio.run(
+    run_script(
+        path="./my_workflow.py",
+        parameters={
+            "helpdesk_email": "user@example.com",
+            "helpdesk_password": "s3cr3t",
+            "api_token": "tok_abc123",
+            "webhook_url": "https://myapp.example.com/webhook",
+        },
+    )
+)
+```
+
+For cloud execution, use `client.run_workflow(workflow_id="wpid_...", parameters={...})` via the [Python SDK](/sdk-reference/workflows).
+</Accordion>

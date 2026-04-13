@@ -234,6 +234,7 @@
                   "sdk-reference/overview",
                   "sdk-reference/tasks",
                   "sdk-reference/workflows",
+                  "sdk-reference/workflow-scripts",
                   "sdk-reference/browser-sessions",
                   "sdk-reference/browser-profiles",
                   "sdk-reference/credentials",

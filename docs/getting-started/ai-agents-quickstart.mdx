@@ -282,6 +282,80 @@ x-api-key = "YOUR_SKYVERN_API_KEY"
 </Tab>
 </Tabs>
 
+### Use the Python SDK directly
+
+If you prefer to write the Python yourself — or want to run Skyvern entirely on your own machine — you can use the SDK without going through an AI coding agent.
+
+<Tabs>
+<Tab title="Local (no cloud required)">
+
+Run Skyvern on your own machine with no API key. The `Skyvern.local()` constructor boots the engine in-process and auto-detects your LLM configuration from environment variables.
+
+**Prerequisites:** an LLM API key (e.g. `OPENAI_API_KEY`) and Playwright (`pip install playwright && playwright install chromium`).
+
+```python
+import asyncio
+from skyvern import Skyvern
+
+async def main():
+    # Zero-config local mode: uses in-memory SQLite, detects LLM from env
+    client = Skyvern.local()
+
+    # Launch a visible Chromium window on your machine
+    browser = await client.launch_local_browser(headless=False)
+    page = await browser.get_working_page()
+
+    # Mix standard Playwright steps with AI
+    await page.goto("https://news.ycombinator.com")
+    result = await page.agent.run_task(
+        "Get the top comment of the #1 post",
+        max_steps=10,
+    )
+    print(result.output)
+
+    await browser.close()
+    await client.aclose()
+
+asyncio.run(main())
+```
+
+</Tab>
+<Tab title="Cloud (API key)">
+
+Connect to Skyvern Cloud and run tasks in a managed browser session.
+
+```python
+import os
+import asyncio
+from skyvern import Skyvern
+from skyvern.schemas.runs import ProxyLocation
+
+async def main():
+    client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
+
+    # Cloud-hosted browser — reuses an idle session if one exists
+    browser = await client.use_cloud_browser()
+    page = await browser.get_working_page()
+
+    # Combine manual navigation with AI actions
+    await page.goto("https://news.ycombinator.com")
+    result = await page.agent.run_task(
+        "Get the top comment of the #1 post",
+        max_steps=10,
+    )
+    print(result.output)
+
+    await browser.close()
+    await client.aclose()
+
+asyncio.run(main())
+```
+
+</Tab>
+</Tabs>
+
+See the [Python SDK Reference](/sdk-reference/overview) for the full API.
+
 ### Keep building
 
 <CardGroup cols={3}>
