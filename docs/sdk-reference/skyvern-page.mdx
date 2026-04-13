@@ -52,9 +52,15 @@ await page.act("Fill in the username field with 'user@example.com'")
 await page.act("Select 'United States' from the country dropdown")
 ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | `str` | Plain-English description of the action to perform |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | Plain-English description of the action to perform |
+| `skip_refresh` | `bool` | `False` | Skip the DOM-refresh step before sending to the LLM. Use when the page is already in the expected state to save one round-trip. |
+| `use_economy_tree` | `bool` | `False` | Send a reduced DOM representation to the LLM instead of the full element tree. Reduces token usage and latency at the cost of potentially missing less-prominent elements. |
+
+<Note>
+If a CSS-selector-based click fails, `act()` automatically presses `Escape` to dismiss any open overlay (autocomplete dropdown, tooltip, etc.) and retries once before falling back to an AI-driven click. This is usually helpful, but if your workflow deliberately opens an overlay and immediately clicks within it, consider using Playwright's `page.click()` directly for that step.
+</Note>
 
 ---
 
@@ -131,6 +137,23 @@ result = await page.prompt("Summarize the page", schema=schema)
 <Tip>
 **Single action vs. autonomous agent** — `act`, `extract`, `validate`, and `prompt` each make one LLM call and return immediately. `page.agent` methods run a full multi-step task or workflow and only return once the agent has finished. Use the single-action methods when you know exactly what to do; use `page.agent` when you want AI to figure out the steps.
 </Tip>
+
+**Timeouts and polling**
+
+All `page.agent` methods poll every **10 seconds** for run completion. The default `timeout` is **1800 seconds (30 minutes)**. When the timeout is exceeded, `asyncio.TimeoutError` is raised — not a Skyvern-specific exception. Catch it explicitly if you need to handle timeouts gracefully:
+
+```python
+import asyncio
+
+try:
+    result = await page.agent.run_task("Extract all invoices", timeout=120)
+except asyncio.TimeoutError:
+    print("Task did not finish within 2 minutes")
+```
+
+<Note>
+If the current page URL is `about:blank` when an agent method is called with no explicit `url` parameter, the agent starts without navigating anywhere. Always navigate to a real URL first, or pass `url=` explicitly.
+</Note>
 
 `page.agent` provides high-level AI-driven actions that coordinate multi-step flows against the same browser session. Unlike the single-action methods above, these run a full Skyvern task or workflow and wait for completion.
 
@@ -304,6 +327,10 @@ content = await page.content()
 screenshot = await page.screenshot(path="shot.png", full_page=True)
 await page.wait_for_selector(".confirmation")
 ```
+
+### iframe scope caveat
+
+`SkyvernPage` supports switching into iframes via `frame_switch()` / `frame_main()`. When a frame is active, all AI methods — including `validate()` — operate **only within that frame**. Error badges and status elements on the main page are invisible from within an iframe context. Call `await page.frame_main()` before running any validation that needs to inspect the full page.
 
 ---
 

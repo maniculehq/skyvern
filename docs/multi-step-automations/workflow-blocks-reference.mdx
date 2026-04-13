@@ -592,9 +592,68 @@ Iterate over an array and execute nested blocks for each item.
 Use `{{nested_block_label.current_value}}` to reference the current iteration value, where `nested_block_label` is the `label` of the block **inside** `loop_blocks` — not the label of the `for_loop` itself.
 
 In the example above, the loop label is `apply_to_jobs` and the nested block label is `submit_application`, so the current URL is accessed as `{{submit_application.current_value}}`.
+
+Two additional reserved variables are available inside any loop iteration:
+
+| Variable | Description |
+|----------|-------------|
+| `{{nested_block_label.current_index}}` | 0-based position in the array |
+| `{{nested_block_label.current_item}}` | Same as `current_value`; alternate alias |
 </Info>
 
 The output of a `for_loop` block is an array containing the result from each iteration.
+
+<Warning>
+**Hard limits on loop size**
+
+- **100 iterations maximum.** If the input array has more than 100 items, only the first 100 are processed. The block completes successfully — the excess items are silently dropped, not surfaced as an error.
+- **50 steps per iteration.** Each nested block run is capped at 50 agent steps. Hitting this cap marks that iteration as failed; the loop continues to the next item.
+
+Design loops to process a bounded number of items, or use pagination to break large sets into multiple workflow runs.
+</Warning>
+
+<Note>
+**`complete_if_empty` default is `false`**
+
+If the array referenced by `loop_over_parameter_key` is empty (or the parameter is `null`), the block raises an error by default. Set `complete_if_empty: true` to treat an empty array as a successful no-op instead.
+</Note>
+
+### Parallel execution
+
+Set `max_concurrency` to run multiple iterations concurrently. Accepted values: `1` (sequential, default) through `20`. Each parallel iteration receives its own browser context; results are merged in input order after the batch completes.
+
+```json
+{
+  "block_type": "for_loop",
+  "label": "process_invoices",
+  "loop_over_parameter_key": "invoice_urls",
+  "max_concurrency": 5,
+  "continue_on_failure": true,
+  "loop_blocks": [
+    {
+      "block_type": "navigation",
+      "label": "extract_invoice",
+      "url": "{{extract_invoice.current_value}}",
+      "navigation_goal": "Extract invoice total and date."
+    }
+  ]
+}
+```
+
+<Note>
+A failure in one parallel iteration does not cancel the other running iterations. All results (including failures) are collected before the batch finishes. Use `continue_on_failure: true` at the loop level if you want the workflow to proceed even when some iterations fail.
+</Note>
+
+### Failure handling
+
+Two flags control what happens when a nested block fails:
+
+| Flag | Level | Behavior |
+|------|-------|----------|
+| `next_loop_on_failure` | nested block | Skip to the next iteration when **this** block fails |
+| `continue_on_failure` | `for_loop` | Continue the workflow after the loop itself fails |
+
+`next_loop_on_failure` takes precedence: if a block sets it to `true`, the loop moves to the next item regardless of the loop-level `continue_on_failure` setting.
 
 ---
 
@@ -980,7 +1039,39 @@ Execute custom Python code for data transformation or browser control.
 | `code` | string | — | **Required.** Python code to execute. Store result in `result` variable. |
 | `parameter_keys` | array | — | Parameters available to the code. |
 
-Available objects: `skyvern_page` (Playwright page object for browser control).
+### Available in code scope
+
+Parameters listed in `parameter_keys` are injected as local variables. In addition, the following built-ins and modules are available:
+
+| Identifier | What you get |
+|-----------|-------------|
+| `page` | Playwright `Page` object (browser control — see note below) |
+| `re` | Full `re` module (`match`, `search`, `findall`, `sub`, `compile`, `split`, flags) |
+| `json` | `json.dumps` and `json.loads` |
+| `asyncio.sleep` | Async sleep |
+| Standard builtins | `print`, `len`, `range`, `str`, `int`, `float`, `dict`, `list`, `tuple`, `set`, `bool`, `Exception` |
+
+All other imports are blocked at parse time.
+
+### Setting the result
+
+Your code must assign `result` before it finishes. Whatever you assign to `result` becomes the block's output and can be referenced by downstream blocks.
+
+- Any JSON-serialisable value (dict, list, string, number, bool, `None`) is stored as-is.
+- Non-serialisable objects (e.g. a class instance) are automatically converted to their string representation.
+- If your code raises an uncaught exception, the block fails with a `CustomizedCodeException` containing the error message.
+
+### Secrets in Code Block
+
+Unlike other block types (Navigation, Extraction, Task), Code Block receives the **real plaintext values** of any credential or secret parameters — not masked placeholders. This is intentional: the code runs deterministically, without an LLM that could hallucinate credential content.
+
+### Sandbox limitations
+
+<Warning>
+The Code Block sandbox is an AST-based blocklist, **not** a process-level security boundary. It blocks common escape hatches (`subprocess`, `os`, `eval`, `getattr`, frame introspection) but a determined attacker may find bypasses.
+
+Do not execute untrusted code in Code Blocks. If you are running user-supplied code, use a separate sandboxed environment.
+</Warning>
 
 <Note>
 Code Block with browser control is invite-only on Skyvern Cloud. Contact support@skyvern.com for access.

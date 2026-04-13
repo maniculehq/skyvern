@@ -18,6 +18,18 @@ Skyvern uses [Alembic](https://alembic.sqlalchemy.org/) to manage all PostgreSQL
 - The `skyvern` Python package is installed (`uv sync` or `pip install skyvern`).
 - You are in the root of the Skyvern repository (where `alembic.ini` lives).
 
+`DATABASE_STRING` uses the SQLAlchemy / psycopg connection URL format:
+
+```
+postgresql+psycopg://USER:PASSWORD@HOST:PORT/DATABASE
+```
+
+Example for a local install:
+
+```bash
+export DATABASE_STRING="postgresql+psycopg://skyvern:skyvern@localhost:5432/skyvern"
+```
+
 ---
 
 ## Running migrations
@@ -29,6 +41,8 @@ alembic upgrade head
 ```
 
 This brings your schema to the latest revision. It is idempotent — running it again when you are already at `head` is safe and makes no changes.
+
+**Upgrading across multiple versions** — `alembic upgrade head` applies every pending migration in chain order. You do not need to run migrations one version at a time. Whether you are one release or twenty behind, a single `alembic upgrade head` catches you up safely.
 
 ### Check the current revision
 
@@ -164,6 +178,28 @@ Alembic requires `CREATE`, `ALTER`, and `DROP` privileges on the target database
 ```sql
 GRANT ALL PRIVILEGES ON DATABASE skyvern TO skyvern_user;
 ```
+
+### Migration chain conflict after switching branches
+
+If you switch Git branches (e.g., from a feature branch back to `main`) and the two branches have diverging migrations, `alembic current` may show a revision that does not exist in the checked-out branch's `alembic/versions/`. Alembic will refuse to upgrade or downgrade.
+
+Resolution:
+
+1. Identify the last common ancestor revision using `git log --oneline alembic/versions/`.
+2. Use `alembic downgrade <ancestor-revision>` to roll back to a known-good state.
+3. Switch branches, then run `alembic upgrade head`.
+
+Always back up your database before resolving branch conflicts in a production environment.
+
+### Server errors on startup without running migrations first
+
+Starting the Skyvern server on an out-of-date schema typically produces errors such as:
+
+- `column "X" of relation "Y" does not exist` — a migration added a required column that is missing
+- `relation "Z" does not exist` — a migration created a table that was never applied
+- `invalid input value for enum "..."` — a migration added an enum value that the old schema does not have
+
+If you see any of these errors on startup, stop the server, run `alembic upgrade head`, and restart.
 
 ---
 

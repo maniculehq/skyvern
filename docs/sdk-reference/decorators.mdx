@@ -47,6 +47,10 @@ async def download_invoices(page: SkyvernPage, context: RunContext) -> None:
 | `webhook_url` | `str \| None` | `None` | Default webhook for run-status notifications |
 | `max_steps` | `int \| None` | `None` | Global step cap for AI agent tasks within this workflow |
 
+<Note>
+`@workflow` is currently a **metadata hint**, not an enforced runtime contract. At execution time the decorator is a no-op that returns the original function unchanged — it does not register the function, trigger a workflow run, or validate parameters automatically. The metadata you pass (`title`, `max_steps`, etc.) is used by tooling and the Skyvern UI when the script is uploaded or referenced, but does not affect in-process execution.
+</Note>
+
 ---
 
 ### `@cached`
@@ -67,7 +71,7 @@ async def navigate_to_reports(page: SkyvernPage, context: RunContext) -> None:
 | `cache_key` | `str` | Unique identifier for this block within the script |
 
 <Note>
-`@cached` blocks are labelled at call time (`page.current_label` is set to the key). The caching behaviour — replaying or skipping — is controlled by the Skyvern execution runtime, not by the decorator itself.
+`@cached` sets `page.current_label = cache_key` before the wrapped function runs, and **always** clears it (via `finally`) after — even if the function raises an exception. This label is what the Skyvern runtime uses to identify, replay, or skip the block. If your cached function itself raises, the label is still cleared and the exception propagates normally.
 </Note>
 
 ---
@@ -94,6 +98,19 @@ async def main() -> None:
 | `adaptive_caching` | `bool` | `False` | Enable adaptive cache replay during script development |
 
 Returns `tuple[SkyvernPage, RunContext]`.
+
+**`context.parameters` is a safe-access dict**
+
+`RunContext.parameters` behaves like a regular `dict` with one difference: accessing a key that doesn't exist returns `None` and logs a warning instead of raising a `KeyError`. This prevents cached scripts from crashing when a parameter key is renamed or removed, but it means typos in parameter names fail silently. Always verify parameter names when debugging unexpected `None` values.
+
+```python
+# This does NOT raise KeyError — returns None and logs a warning instead
+value = context.parameters["typo_key"]
+```
+
+**`adaptive_caching` and performance**
+
+When `adaptive_caching=True`, `setup()` makes a single LLM call to extract canonical values from your `parameters` dict before the workflow runs. This result is cached for **1 hour** (up to 256 entries by SHA-256 key). Only string parameters longer than 100 characters are sent to the LLM; short strings and non-string values are matched directly by key name. If the LLM call fails, execution continues without the extracted values — no exception is raised.
 
 ---
 
