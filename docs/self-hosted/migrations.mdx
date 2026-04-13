@@ -69,9 +69,10 @@ Downgrading may be irreversible if a migration performed a data transformation. 
 Migrations live in `alembic/versions/`. Each file is a Python module with `upgrade()` and `downgrade()` functions:
 
 ```
+alembic.ini           # Alembic configuration — lives at the repo root
 alembic/
-  alembic.ini         # Alembic configuration (points to DATABASE_STRING)
   env.py              # Runtime environment — loads settings, imports models
+  script.py.mako      # Migration template
   versions/
     0001_initial.py
     0002_add_tasks.py

@@ -81,22 +81,28 @@ print(result["total_price"])
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `prompt` | `str` | — | What to extract, in plain English |
-| `schema` | `dict \| None` | `None` | JSON Schema describing the expected output shape |
+| `schema` | `dict \| list \| str \| None` | `None` | JSON Schema describing the expected output shape |
+| `error_code_mapping` | `dict \| None` | `None` | Map error conditions to custom error codes |
+| `intention` | `str \| None` | `None` | Hint about the extraction intent passed to the LLM |
 
 ---
 
 ### `validate()`
 
-Assert that the current page satisfies a plain-English condition. Raises an exception if the assertion fails.
+Check that the current page satisfies a plain-English condition. Returns `True` if the condition holds, `False` otherwise.
 
 ```python
-await page.validate("The page should show a success confirmation message")
-await page.validate("The user should be logged in (look for the account menu)")
+ok = await page.validate("The page should show a success confirmation message")
+if not ok:
+    raise ValueError("Confirmation not found")
+
+logged_in = await page.validate("The user should be logged in (look for the account menu)")
 ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | `str` | The condition to check, in plain English |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | The condition to check, in plain English |
+| `model` | `dict \| str \| None` | `None` | LLM model configuration override |
 
 ---
 
@@ -116,6 +122,7 @@ result = await page.prompt("Summarize the page", schema=schema)
 |-----------|------|---------|-------------|
 | `prompt` | `str` | — | Your question or instruction |
 | `schema` | `dict \| None` | `None` | JSON Schema for a typed response |
+| `model` | `dict \| str \| None` | `None` | LLM model configuration override |
 
 ---
 

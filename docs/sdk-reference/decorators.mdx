@@ -4,12 +4,13 @@ subtitle: Build reusable browser scripts with @workflow, @cached, and friends
 slug: sdk-reference/decorators
 ---
 
-The Skyvern Python SDK ships a set of decorators and top-level action functions that let you write browser automation as plain Python functions. This is the **script-based** API — an alternative to calling `client.run_task()` — that gives you fine-grained control over execution flow, caching, and reuse.
+The Skyvern Python SDK ships a set of decorators and top-level script functions that let you write browser automation as plain Python functions. This is the **script-based** API — an alternative to calling `client.run_task()` — that gives you fine-grained control over execution flow, caching, and reuse.
 
-All decorators and action functions are exported directly from the `skyvern` package:
+All decorators and functions are exported directly from the `skyvern` package:
 
 ```python
-from skyvern import workflow, cached, setup, action, conditional
+from skyvern import workflow, cached
+from skyvern import setup, action, conditional
 from skyvern import goto, extract, run_task, login, download, validate, wait
 # ... and more
 ```
@@ -69,54 +70,60 @@ async def navigate_to_reports(page: SkyvernPage, context: RunContext) -> None:
 
 ---
 
-### `@setup`
+## Script initialization
 
-Marks a function as a pre-workflow initializer. Use it to load configuration, warm up connections, or set initial browser state before the main workflow body runs.
+### `setup()`
+
+Initializes a Skyvern script session. Call this at the entry point of your script to obtain a `SkyvernPage` and a `RunContext` bound to the active browser session.
 
 ```python
-from skyvern import setup, Skyvern, SkyvernPage, RunContext
+from skyvern import setup, SkyvernPage, RunContext
 
-@setup
-async def initialize(page: SkyvernPage, context: RunContext) -> None:
-    # Set cookies, inject session tokens, navigate to a known start state, etc.
-    await page.goto("https://app.example.com")
-    await page.evaluate("localStorage.setItem('mode', 'automation')")
+async def main() -> None:
+    page, context = await setup(parameters={"cred_id": "cred_abc123"})
+    await my_workflow(page, context)
 ```
 
-`@setup` functions receive the same `(page, context)` signature as the main workflow.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `parameters` | `dict` | — | Key-value pairs accessible in the workflow via `context.parameters` |
+| `generated_parameter_cls` | `type[BaseModel] \| None` | `None` | Pydantic model class for typed parameter validation |
+| `browser_session_id` | `str \| None` | `None` | Attach to an existing browser session instead of creating a new one |
+| `adaptive_caching` | `bool` | `False` | Enable adaptive cache replay during script development |
+
+Returns `tuple[SkyvernPage, RunContext]`.
 
 ---
 
-### `@action`
+## Conditional branching
 
-Declares a custom browser action that can be invoked from within a script. Actions are reusable steps with a defined signature.
+### `conditional()`
 
-```python
-from skyvern import action, SkyvernPage, RunContext
-
-@action
-async def accept_cookie_banner(page: SkyvernPage, context: RunContext) -> None:
-    """Dismiss the cookie consent banner if present."""
-    try:
-        await page.click("#cookie-accept", timeout=2000)
-    except Exception:
-        pass  # Banner not shown — continue silently
-```
-
----
-
-### `@conditional`
-
-Wraps a function to make it a conditional branch point. The decorated function returns a boolean; the runtime uses the result to decide which branch to follow.
+Evaluates a conditional branch defined by a `@cached` function registered under the given label. The cached function must return a dict with `next_block_label` indicating which branch to follow.
 
 ```python
-from skyvern import conditional, SkyvernPage, RunContext
+from skyvern import cached, conditional, SkyvernPage, RunContext
 
-@conditional
-async def is_logged_in(page: SkyvernPage, context: RunContext) -> bool:
-    text = await page.extract("Is the user logged in? Return true or false.")
-    return text.lower().strip() == "true"
+# Register a branch function with @cached
+@cached("check-login")
+async def check_if_logged_in(page: SkyvernPage, context: RunContext) -> dict:
+    logged_in = await page.validate("The user is logged in")
+    return {
+        "next_block_label": "post-login" if logged_in else "do-login",
+        "branch_index": 0 if logged_in else 1,
+    }
+
+# Evaluate the branch inside a workflow
+async def my_workflow(page: SkyvernPage, context: RunContext) -> None:
+    result = await conditional("check-login")
+    # result["next_block_label"] tells the runtime which block to run next
 ```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `label` | `str` | The `cache_key` of the `@cached` function that evaluates the branch |
+
+Returns `dict[str, Any]` with at minimum `next_block_label` and `branch_index`.
 
 ---
 
@@ -136,7 +143,7 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 | Function | Description |
 |----------|-------------|
 | `extract(prompt, schema?)` | Extract structured or unstructured data from the page |
-| `validate(prompt)` | Assert a condition against the current page; raises on failure |
+| `validate(complete_criterion?, terminate_criterion?)` | Check completion or termination conditions; returns without error if condition holds |
 | `prompt(prompt, schema?)` | Raw LLM call with page context |
 
 ### Task execution
@@ -173,14 +180,14 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 
 | Function | Description |
 |----------|-------------|
-| `send_email(to, subject, body, **kwargs)` | Send an email |
-| `http_request(method, url, **kwargs)` | Make an outbound HTTP request |
+| `send_email(sender, recipients, subject, body, ...)` | Send an email from `sender` to one or more `recipients` |
+| `http_request(method, url, ...)` | Make an outbound HTTP request |
 
 ### Control flow
 
 | Function | Description |
 |----------|-------------|
-| `loop(items, fn, **kwargs)` | Iterate a function over a list |
+| `loop(values, complete_if_empty?, label?)` | Async generator — yields `SkyvernLoopItem` for each value; use with `async for` |
 
 ---
 
@@ -188,12 +195,8 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 
 ```python
 import asyncio
-from skyvern import Skyvern, SkyvernPage, RunContext
+from skyvern import SkyvernPage, RunContext
 from skyvern import workflow, cached, setup
-
-@setup
-async def open_portal(page: SkyvernPage, context: RunContext) -> None:
-    await page.goto("https://portal.example.com")
 
 @cached("login-step")
 async def do_login(page: SkyvernPage, context: RunContext) -> None:
@@ -201,7 +204,7 @@ async def do_login(page: SkyvernPage, context: RunContext) -> None:
 
 @workflow(title="Q1 Report Collector", max_steps=100)
 async def collect_reports(page: SkyvernPage, context: RunContext) -> None:
-    await open_portal(page, context)
+    await page.goto("https://portal.example.com")
     await do_login(page, context)
 
     reports = await page.extract(
@@ -220,13 +223,11 @@ async def collect_reports(page: SkyvernPage, context: RunContext) -> None:
 
     for report in reports:
         await page.goto(report["url"])
-        await page.agent.download_files(f"Download the report file")
+        await page.agent.download_files("Download the report file")
 
 async def main() -> None:
-    sdk = Skyvern.local()
-    browser = await sdk.launch_local_browser(headless=False)
-    page = await browser.get_working_page()
-    context = RunContext(parameters={"cred_id": "cred_abc123"})
+    # setup() initialises the browser session and returns (page, context)
+    page, context = await setup(parameters={"cred_id": "cred_abc123"})
     await collect_reports(page, context)
 
 asyncio.run(main())
