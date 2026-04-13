@@ -1,0 +1,254 @@
+---
+title: Script Decorators
+subtitle: Build reusable browser scripts with @workflow, @cached, and friends
+slug: sdk-reference/decorators
+---
+
+The Skyvern Python SDK ships a set of decorators and top-level action functions that let you write browser automation as plain Python functions. This is the **script-based** API — an alternative to calling `client.run_task()` — that gives you fine-grained control over execution flow, caching, and reuse.
+
+All decorators and action functions are exported directly from the `skyvern` package:
+
+```python
+from skyvern import workflow, cached, setup, action, conditional
+from skyvern import goto, extract, run_task, login, download, validate, wait
+# ... and more
+```
+
+---
+
+## Decorators
+
+### `@workflow`
+
+Declares a Python function as a Skyvern workflow. Attaches metadata that the runtime uses when the function is registered or executed.
+
+```python
+from skyvern import Skyvern, workflow, SkyvernPage, RunContext
+
+@workflow(
+    title="Monthly Invoice Downloader",
+    max_steps=50,
+    webhook_url="https://my-app.com/hooks/skyvern",
+)
+async def download_invoices(page: SkyvernPage, context: RunContext) -> None:
+    await page.goto("https://billing.example.com")
+    await page.agent.login(credential_id=context.parameters["cred_id"])
+    await page.agent.download_files("Download all invoices from January 2025")
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `title` | `str \| None` | `None` | Human-readable name displayed in the Skyvern UI |
+| `totp_url` | `str \| None` | `None` | URL used to poll for TOTP codes during this workflow |
+| `totp_identifier` | `str \| None` | `None` | Identifier for TOTP polling |
+| `webhook_url` | `str \| None` | `None` | Default webhook for run-status notifications |
+| `max_steps` | `int \| None` | `None` | Global step cap for AI agent tasks within this workflow |
+
+---
+
+### `@cached`
+
+Marks a block of a script as cacheable by a string key. The labelled block can be replayed or skipped during script development and debugging without re-running earlier steps.
+
+```python
+from skyvern import cached, SkyvernPage, RunContext
+
+@cached("navigate-to-reports")
+async def navigate_to_reports(page: SkyvernPage, context: RunContext) -> None:
+    await page.goto("https://app.example.com/reports")
+    await page.wait_for_selector(".report-list")
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cache_key` | `str` | Unique identifier for this block within the script |
+
+<Note>
+`@cached` blocks are labelled at call time (`page.current_label` is set to the key). The caching behaviour — replaying or skipping — is controlled by the Skyvern execution runtime, not by the decorator itself.
+</Note>
+
+---
+
+### `@setup`
+
+Marks a function as a pre-workflow initializer. Use it to load configuration, warm up connections, or set initial browser state before the main workflow body runs.
+
+```python
+from skyvern import setup, Skyvern, SkyvernPage, RunContext
+
+@setup
+async def initialize(page: SkyvernPage, context: RunContext) -> None:
+    # Set cookies, inject session tokens, navigate to a known start state, etc.
+    await page.goto("https://app.example.com")
+    await page.evaluate("localStorage.setItem('mode', 'automation')")
+```
+
+`@setup` functions receive the same `(page, context)` signature as the main workflow.
+
+---
+
+### `@action`
+
+Declares a custom browser action that can be invoked from within a script. Actions are reusable steps with a defined signature.
+
+```python
+from skyvern import action, SkyvernPage, RunContext
+
+@action
+async def accept_cookie_banner(page: SkyvernPage, context: RunContext) -> None:
+    """Dismiss the cookie consent banner if present."""
+    try:
+        await page.click("#cookie-accept", timeout=2000)
+    except Exception:
+        pass  # Banner not shown — continue silently
+```
+
+---
+
+### `@conditional`
+
+Wraps a function to make it a conditional branch point. The decorated function returns a boolean; the runtime uses the result to decide which branch to follow.
+
+```python
+from skyvern import conditional, SkyvernPage, RunContext
+
+@conditional
+async def is_logged_in(page: SkyvernPage, context: RunContext) -> bool:
+    text = await page.extract("Is the user logged in? Return true or false.")
+    return text.lower().strip() == "true"
+```
+
+---
+
+## Action functions
+
+These top-level functions are the building blocks of Skyvern scripts. Each maps to a single browser or AI operation and is designed to be called inside a `@workflow` or `@cached` function.
+
+### Browser navigation
+
+| Function | Description |
+|----------|-------------|
+| `goto(url)` | Navigate to a URL |
+| `wait(seconds)` | Pause execution |
+
+### AI actions
+
+| Function | Description |
+|----------|-------------|
+| `extract(prompt, schema?)` | Extract structured or unstructured data from the page |
+| `validate(prompt)` | Assert a condition against the current page; raises on failure |
+| `prompt(prompt, schema?)` | Raw LLM call with page context |
+
+### Task execution
+
+| Function | Description |
+|----------|-------------|
+| `run_task(prompt, **kwargs)` | Run a full multi-step AI task |
+| `run_script(script_id, **kwargs)` | Run a stored script by ID |
+| `run_code(code, **kwargs)` | Execute a code block |
+
+### Authentication
+
+| Function | Description |
+|----------|-------------|
+| `login(credential_id, **kwargs)` | Log in using a stored credential |
+
+### File operations
+
+| Function | Description |
+|----------|-------------|
+| `download(prompt, **kwargs)` | Download files matching a description |
+| `parse_file(file_path, **kwargs)` | Parse a local file and return its content |
+| `parse_pdf(file_path, **kwargs)` | Parse a PDF and return structured content |
+| `upload_file(file_path, **kwargs)` | Upload a file to the current page |
+
+### Data rendering
+
+| Function | Description |
+|----------|-------------|
+| `render_list(items, template)` | Render a Jinja2 template over a list |
+| `render_template(template, **kwargs)` | Render a single Jinja2 template |
+
+### Communication
+
+| Function | Description |
+|----------|-------------|
+| `send_email(to, subject, body, **kwargs)` | Send an email |
+| `http_request(method, url, **kwargs)` | Make an outbound HTTP request |
+
+### Control flow
+
+| Function | Description |
+|----------|-------------|
+| `loop(items, fn, **kwargs)` | Iterate a function over a list |
+
+---
+
+## End-to-end example
+
+```python
+import asyncio
+from skyvern import Skyvern, SkyvernPage, RunContext
+from skyvern import workflow, cached, setup
+
+@setup
+async def open_portal(page: SkyvernPage, context: RunContext) -> None:
+    await page.goto("https://portal.example.com")
+
+@cached("login-step")
+async def do_login(page: SkyvernPage, context: RunContext) -> None:
+    await page.agent.login(credential_id=context.parameters["cred_id"])
+
+@workflow(title="Q1 Report Collector", max_steps=100)
+async def collect_reports(page: SkyvernPage, context: RunContext) -> None:
+    await open_portal(page, context)
+    await do_login(page, context)
+
+    reports = await page.extract(
+        "List all Q1 2025 reports with their download links",
+        schema={
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "url":  {"type": "string"},
+                },
+            },
+        },
+    )
+
+    for report in reports:
+        await page.goto(report["url"])
+        await page.agent.download_files(f"Download the report file")
+
+async def main() -> None:
+    sdk = Skyvern.local()
+    browser = await sdk.launch_local_browser(headless=False)
+    page = await browser.get_working_page()
+    context = RunContext(parameters={"cred_id": "cred_abc123"})
+    await collect_reports(page, context)
+
+asyncio.run(main())
+```
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="SkyvernPage"
+    icon="wand-magic-sparkles"
+    href="/sdk-reference/skyvern-page"
+  >
+    Explore all AI page methods and the browser agent
+  </Card>
+  <Card
+    title="Workflows"
+    icon="diagram-project"
+    href="/sdk-reference/workflows"
+  >
+    Run and manage workflows via the REST API
+  </Card>
+</CardGroup>

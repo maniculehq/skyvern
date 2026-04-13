@@ -1,0 +1,363 @@
+---
+title: SkyvernPage
+subtitle: Playwright Page with built-in AI actions and browser agent
+slug: sdk-reference/skyvern-page
+---
+
+`SkyvernPage` is a drop-in replacement for Playwright's `Page` object that adds AI-powered actions on top of standard browser control. All existing Playwright `Page` methods work unchanged; the extensions give you natural-language interaction and an agent that can operate the browser on your behalf.
+
+---
+
+## How you get a SkyvernPage
+
+`SkyvernPage` is returned when you open a browser through the `Skyvern` SDK — never constructed directly.
+
+```python
+import asyncio
+from skyvern import Skyvern
+
+async def main():
+    # Cloud mode
+    sdk = Skyvern(api_key="YOUR_API_KEY")
+    browser = await sdk.use_cloud_browser()
+
+    # Local mode (run `skyvern quickstart` first)
+    # sdk = Skyvern.local()
+    # browser = await sdk.launch_local_browser(headless=False)
+
+    page = await browser.get_working_page()  # returns SkyvernPage
+
+    # Standard Playwright methods work unchanged
+    await page.goto("https://example.com")
+
+    # AI methods available alongside them
+    await page.agent.run_task("Fill in and submit the contact form")
+
+asyncio.run(main())
+```
+
+---
+
+## AI page methods
+
+These methods send the current page state (screenshot + DOM) to the configured LLM and act on the result.
+
+### `act()`
+
+Perform a natural-language browser action on the current page.
+
+```python
+await page.act("Click the 'Sign in' button")
+await page.act("Fill in the username field with 'user@example.com'")
+await page.act("Select 'United States' from the country dropdown")
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | `str` | Plain-English description of the action to perform |
+
+---
+
+### `extract()`
+
+Extract structured data from the current page.
+
+```python
+# Unstructured — returns a string
+result = await page.extract("What is the total price shown in the cart?")
+
+# Structured — pass a JSON Schema to get a typed dict back
+schema = {
+    "type": "object",
+    "properties": {
+        "total_price": {"type": "number"},
+        "item_count":  {"type": "integer"},
+    },
+}
+result = await page.extract("Extract the cart summary", schema=schema)
+print(result["total_price"])
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | What to extract, in plain English |
+| `schema` | `dict \| None` | `None` | JSON Schema describing the expected output shape |
+
+---
+
+### `validate()`
+
+Assert that the current page satisfies a plain-English condition. Raises an exception if the assertion fails.
+
+```python
+await page.validate("The page should show a success confirmation message")
+await page.validate("The user should be logged in (look for the account menu)")
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | `str` | The condition to check, in plain English |
+
+---
+
+### `prompt()`
+
+Make a raw LLM call with the current page as context and return the model's response.
+
+```python
+answer = await page.prompt("Summarize the main content of this page in two sentences")
+
+# Structured response
+schema = {"type": "object", "properties": {"summary": {"type": "string"}}}
+result = await page.prompt("Summarize the page", schema=schema)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | Your question or instruction |
+| `schema` | `dict \| None` | `None` | JSON Schema for a typed response |
+
+---
+
+## Browser agent (`page.agent`)
+
+`page.agent` provides high-level AI-driven actions that coordinate multi-step flows against the same browser session. Unlike the single-action methods above, these run a full Skyvern task or workflow and wait for completion.
+
+### `page.agent.run_task()`
+
+Run a multi-step task against the current page.
+
+```python
+result = await page.agent.run_task(
+    "Find all invoices from January 2025 and download them",
+    max_steps=50,
+    timeout=300,
+)
+print(result.status)   # "completed"
+print(result.output)   # extracted data if data_extraction_schema was set
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | Natural-language task description |
+| `engine` | `RunEngine` | `skyvern_v1` | Execution engine |
+| `model` | `dict \| None` | `None` | LLM model configuration override |
+| `url` | `str \| None` | current page URL | Navigate to this URL before starting |
+| `webhook_url` | `str \| None` | `None` | Receive progress notifications |
+| `totp_identifier` | `str \| None` | `None` | TOTP identifier for 2FA |
+| `totp_url` | `str \| None` | `None` | URL to fetch TOTP codes |
+| `title` | `str \| None` | `None` | Human-readable label for this run |
+| `error_code_mapping` | `dict \| None` | `None` | Map error types to custom messages |
+| `data_extraction_schema` | `dict \| str \| None` | `None` | Schema for structured output |
+| `max_steps` | `int \| None` | `None` | Cap on agent steps (uses global default if omitted) |
+| `timeout` | `float` | `1800` | Max seconds to wait for completion |
+| `user_agent` | `str \| None` | `None` | Custom browser user-agent string |
+
+Returns `TaskRunResponse`.
+
+---
+
+### `page.agent.login()`
+
+Run a credential-based login workflow on the current page. Supports four credential backends.
+
+<CodeGroup>
+
+```python Skyvern credentials
+await page.agent.login(
+    credential_id="cred_abc123",
+    url="https://app.example.com/login",   # optional, defaults to current URL
+)
+```
+
+```python Bitwarden
+await page.agent.login(
+    credential_type=CredentialType.bitwarden,
+    bitwarden_item_id="item-uuid",
+    bitwarden_collection_id="collection-uuid",  # optional
+)
+```
+
+```python 1Password
+await page.agent.login(
+    credential_type=CredentialType.onepassword,
+    onepassword_vault_id="vault-uuid",
+    onepassword_item_id="item-uuid",
+)
+```
+
+```python Azure Vault
+await page.agent.login(
+    credential_type=CredentialType.azure_vault,
+    azure_vault_name="my-vault",
+    azure_vault_username_key="username",
+    azure_vault_password_key="password",
+    azure_vault_totp_secret_key="totp-secret",  # optional
+)
+```
+
+</CodeGroup>
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `credential_type` | `CredentialType` | `skyvern` | Which credential store to use |
+| `url` | `str \| None` | current page URL | Navigate to login page before starting |
+| `prompt` | `str \| None` | `None` | Additional login instructions |
+| `credential_id` | `str \| None` | `None` | Skyvern credential ID (required for `skyvern` type) |
+| `bitwarden_item_id` | `str \| None` | `None` | Required for `bitwarden` type |
+| `bitwarden_collection_id` | `str \| None` | `None` | Optional collection filter (Bitwarden) |
+| `onepassword_vault_id` | `str \| None` | `None` | Required for `onepassword` type |
+| `onepassword_item_id` | `str \| None` | `None` | Required for `onepassword` type |
+| `azure_vault_name` | `str \| None` | `None` | Required for `azure_vault` type |
+| `azure_vault_username_key` | `str \| None` | `None` | Required for `azure_vault` type |
+| `azure_vault_password_key` | `str \| None` | `None` | Required for `azure_vault` type |
+| `azure_vault_totp_secret_key` | `str \| None` | `None` | Optional TOTP key (Azure Vault) |
+| `webhook_url` | `str \| None` | `None` | Webhook for progress notifications |
+| `totp_identifier` | `str \| None` | `None` | TOTP polling identifier |
+| `totp_url` | `str \| None` | `None` | URL to fetch TOTP codes |
+| `extra_http_headers` | `dict \| None` | `None` | Extra headers for browser requests |
+| `timeout` | `float` | `1800` | Max seconds to wait for completion |
+
+Returns `WorkflowRunResponse`.
+
+---
+
+### `page.agent.download_files()`
+
+Run a file-download workflow in the current browser session.
+
+```python
+result = await page.agent.download_files(
+    "Download all PDF invoices from the billing section",
+    url="https://app.example.com/billing",
+    download_suffix=".pdf",
+    timeout=300,
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | Navigation and download instructions |
+| `url` | `str \| None` | current page URL | Start URL for the download workflow |
+| `download_suffix` | `str \| None` | `None` | Expected file extension |
+| `download_timeout` | `float \| None` | `None` | Timeout for the download step |
+| `max_steps_per_run` | `int \| None` | `None` | Step limit per run |
+| `webhook_url` | `str \| None` | `None` | Webhook for progress notifications |
+| `totp_identifier` | `str \| None` | `None` | TOTP polling identifier |
+| `totp_url` | `str \| None` | `None` | URL to fetch TOTP codes |
+| `extra_http_headers` | `dict \| None` | `None` | Extra headers for browser requests |
+| `timeout` | `float` | `1800` | Max seconds to wait for completion |
+
+Returns `WorkflowRunResponse`.
+
+---
+
+### `page.agent.run_workflow()`
+
+Execute a stored Skyvern workflow in the current browser session.
+
+```python
+result = await page.agent.run_workflow(
+    workflow_id="wf_abc123",
+    parameters={"report_month": "2025-01"},
+    timeout=600,
+)
+print(result.status)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow_id` | `str` | — | ID of the workflow to run |
+| `parameters` | `dict \| None` | `None` | Parameter values for the workflow |
+| `template` | `bool \| None` | `None` | Whether to run the workflow as a template |
+| `title` | `str \| None` | `None` | Human-readable run label |
+| `webhook_url` | `str \| None` | `None` | Webhook for progress notifications |
+| `totp_url` | `str \| None` | `None` | URL to fetch TOTP codes |
+| `totp_identifier` | `str \| None` | `None` | TOTP polling identifier |
+| `timeout` | `float` | `1800` | Max seconds to wait for completion |
+
+Returns `WorkflowRunResponse`.
+
+---
+
+## Standard Playwright methods
+
+All standard Playwright `Page` methods are available on `SkyvernPage` unchanged. The AI methods are layered on top; they do not replace or shadow Playwright's API.
+
+```python
+# These all work exactly as in Playwright
+await page.goto("https://example.com")
+await page.click("#submit-button")
+await page.fill("#email", "user@example.com")
+content = await page.content()
+screenshot = await page.screenshot(path="shot.png", full_page=True)
+await page.wait_for_selector(".confirmation")
+```
+
+---
+
+## Mixing AI and manual control
+
+You can freely mix AI and Playwright calls in the same session. This is useful when some steps are deterministic (navigate, click a known element) and others require reasoning.
+
+```python
+# Navigate manually to a known URL
+await page.goto("https://portal.example.com")
+
+# Use AI to handle the login form (handles CAPTCHAs, 2FA, etc.)
+await page.agent.login(credential_id="cred_abc123")
+
+# Now back to manual control for deterministic navigation
+await page.click("#reports-tab")
+await page.wait_for_selector(".report-list")
+
+# Use AI to extract structured data from the dynamic result set
+data = await page.extract(
+    "Extract all report names and their dates",
+    schema={
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "date": {"type": "string", "format": "date"},
+            },
+        },
+    },
+)
+```
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Python SDK Overview"
+    icon="python"
+    href="/sdk-reference/overview"
+  >
+    Set up the Skyvern SDK and launch a browser
+  </Card>
+  <Card
+    title="Script Decorators"
+    icon="code"
+    href="/sdk-reference/decorators"
+  >
+    Build reusable browser scripts with @workflow and @cached
+  </Card>
+  <Card
+    title="Credentials"
+    icon="key"
+    href="/sdk-reference/credentials"
+  >
+    Store and use login credentials securely
+  </Card>
+  <Card
+    title="Browser Sessions"
+    icon="browser"
+    href="/sdk-reference/browser-sessions"
+  >
+    Maintain browser state across multiple calls
+  </Card>
+</CardGroup>

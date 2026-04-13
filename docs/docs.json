@@ -195,6 +195,7 @@
             "pages": [
               "self-hosted/overview",
               "self-hosted/docker",
+              "self-hosted/migrations",
               "self-hosted/llm-configuration",
               "self-hosted/browser",
               "self-hosted/proxy",
@@ -232,6 +233,8 @@
                 "group": "Python SDK",
                 "pages": [
                   "sdk-reference/overview",
+                  "sdk-reference/skyvern-page",
+                  "sdk-reference/decorators",
                   "sdk-reference/tasks",
                   "sdk-reference/workflows",
                   "sdk-reference/browser-sessions",

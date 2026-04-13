@@ -1,0 +1,194 @@
+---
+title: Database Migrations
+subtitle: Manage schema upgrades for self-hosted Skyvern deployments
+slug: self-hosted/migrations
+---
+
+Skyvern uses [Alembic](https://alembic.sqlalchemy.org/) to manage all PostgreSQL schema changes. Every version upgrade that touches the database ships as an Alembic migration; there are **184 migrations** as of v1.0.29.
+
+<Note>
+**Run migrations before starting a new server version.** Starting the server on an older schema will cause runtime errors.
+</Note>
+
+---
+
+## Prerequisites
+
+- PostgreSQL is running and `DATABASE_STRING` is set in your environment or `.env` file.
+- The `skyvern` Python package is installed (`uv sync` or `pip install skyvern`).
+- You are in the root of the Skyvern repository (where `alembic.ini` lives).
+
+---
+
+## Running migrations
+
+### Apply all pending migrations
+
+```bash
+alembic upgrade head
+```
+
+This brings your schema to the latest revision. It is idempotent — running it again when you are already at `head` is safe and makes no changes.
+
+### Check the current revision
+
+```bash
+alembic current
+```
+
+Output includes the revision hash and whether the database is at `head`.
+
+### Apply a specific revision
+
+```bash
+alembic upgrade <revision>
+```
+
+Replace `<revision>` with the short hash shown in `alembic current` or the filename prefix in `alembic/versions/`.
+
+### Roll back one revision
+
+```bash
+alembic downgrade -1
+```
+
+### Roll back to a specific revision
+
+```bash
+alembic downgrade <revision>
+```
+
+<Warning>
+Downgrading may be irreversible if a migration performed a data transformation. Always back up your database before rolling back in production.
+</Warning>
+
+---
+
+## Migration files
+
+Migrations live in `alembic/versions/`. Each file is a Python module with `upgrade()` and `downgrade()` functions:
+
+```
+alembic/
+  alembic.ini         # Alembic configuration (points to DATABASE_STRING)
+  env.py              # Runtime environment — loads settings, imports models
+  versions/
+    0001_initial.py
+    0002_add_tasks.py
+    ...               # 184 revisions total as of v1.0.29
+```
+
+Migration files are named `<hash>_<description>.py`. The chain is linear; each file declares its predecessor via `down_revision`.
+
+---
+
+## Docker Compose
+
+If you run Skyvern with the provided `docker-compose.yml`, migrations run automatically when the server container starts:
+
+```yaml
+# excerpt from docker-compose.yml
+command: skyvern quickstart
+```
+
+`skyvern quickstart` calls `alembic upgrade head` before starting the server process. You do not need to run migrations manually in Docker Compose deployments.
+
+To verify after a restart:
+
+```bash
+docker compose exec skyvern alembic current
+```
+
+---
+
+## Kubernetes
+
+If you deploy Skyvern on Kubernetes, run migrations as an init container or a one-off Job before the main Deployment rolls out. Example init container:
+
+```yaml
+initContainers:
+  - name: run-migrations
+    image: skyvern/skyvern:latest
+    command: ["alembic", "upgrade", "head"]
+    envFrom:
+      - secretRef:
+          name: skyvern-env
+```
+
+This ensures the schema is up to date before any application Pod starts.
+
+---
+
+## Creating a new migration
+
+If you are developing Skyvern locally and modify SQLAlchemy models, generate a migration automatically:
+
+```bash
+alembic revision --autogenerate -m "add_new_column_to_tasks"
+```
+
+Review the generated file in `alembic/versions/` before committing — `--autogenerate` can miss complex changes such as partial indexes or custom types.
+
+---
+
+## Troubleshooting
+
+### `Can't locate revision identified by '<hash>'`
+
+Your `alembic_version` table references a revision that no longer exists in `alembic/versions/`. This happens if you switch branches or pull a partial set of migrations. Run `git log --oneline alembic/versions/` to confirm which revisions are present, then check out the missing files.
+
+### `Target database is not up to date`
+
+The server printed this error on startup, or a migration check tool reported it. Run `alembic upgrade head` and restart.
+
+### `psycopg.OperationalError: connection refused`
+
+Alembic cannot reach the database. Confirm `DATABASE_STRING` is set correctly and that PostgreSQL is running:
+
+```bash
+echo $DATABASE_STRING
+psql "$DATABASE_STRING" -c "SELECT 1"
+```
+
+### Permission errors on schema changes
+
+Alembic requires `CREATE`, `ALTER`, and `DROP` privileges on the target database. Grant them to the Skyvern database user:
+
+```sql
+GRANT ALL PRIVILEGES ON DATABASE skyvern TO skyvern_user;
+```
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Docker Deployment"
+    icon="docker"
+    href="/self-hosted/docker"
+  >
+    Full Docker Compose setup for self-hosted Skyvern
+  </Card>
+  <Card
+    title="Kubernetes Deployment"
+    icon="dharmachakra"
+    href="/self-hosted/kubernetes"
+  >
+    Production Kubernetes configuration
+  </Card>
+  <Card
+    title="LLM Configuration"
+    icon="brain"
+    href="/self-hosted/llm-configuration"
+  >
+    Connect Skyvern to your LLM provider
+  </Card>
+  <Card
+    title="Self-Hosted Overview"
+    icon="server"
+    href="/self-hosted/overview"
+  >
+    Architecture overview and setup checklist
+  </Card>
+</CardGroup>
