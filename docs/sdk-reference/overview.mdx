@@ -63,7 +63,7 @@ from skyvern.client import SkyvernEnvironment
 | Environment | URL | When to use |
 |-------------|-----|-------------|
 | `SkyvernEnvironment.CLOUD` | `https://api.skyvern.com` | Skyvern Cloud (default) |
-| `SkyvernEnvironment.STAGING` | `https://api.staging.skyvern.com` | Staging environment for testing |
+| `SkyvernEnvironment.STAGING` | `https://api-staging.skyvern.com` | Staging environment for testing |
 | `SkyvernEnvironment.LOCAL` | `http://localhost:8000` | Local server started with `skyvern run server` |
 
 For a self-hosted instance at a custom URL, pass `base_url` instead:
@@ -84,15 +84,20 @@ Run Skyvern entirely on your machine — no cloud, no network calls. `Skyvern.lo
 **Prerequisite:** Run `skyvern quickstart` once to create the `.env` file with your database connection and LLM API keys.
 
 ```python
+import asyncio
 from skyvern import Skyvern
 
-client = Skyvern.local()
+async def main():
+    client = Skyvern.local()  # synchronous — no await needed
 
-result = await client.run_task(
-    prompt="Get the title of the top post",
-    url="https://news.ycombinator.com",
-    wait_for_completion=True,
-)
+    result = await client.run_task(
+        prompt="Get the title of the top post",
+        url="https://news.ycombinator.com",
+        wait_for_completion=True,
+    )
+    print(result.output)
+
+asyncio.run(main())
 ```
 
 If you configured headful mode during `skyvern quickstart`, a Chromium window opens on your machine so you can watch the AI work.
@@ -101,6 +106,7 @@ If you configured headful mode during `skyvern quickstart`, a Chromium window op
 |-----------|------|---------|-------------|
 | `llm_config` | `LLMConfig \| LLMRouterConfig \| None` | `None` | Override the LLM. If omitted, uses `LLM_KEY` from `.env`. |
 | `settings` | `dict \| None` | `None` | Override `.env` settings at runtime. Example: `{"MAX_STEPS_PER_RUN": 100}` |
+| `use_in_memory_db` | `bool \| None` | `None` | `None` = auto-detect (use PostgreSQL if `DATABASE_STRING` is set, otherwise SQLite). `True` = always use in-memory SQLite. `False` = always use PostgreSQL. |
 
 ---
 
@@ -128,7 +134,7 @@ print(task.run_id)  # poll with client.get_run(task.run_id)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `wait_for_completion` | `bool` | `False` | Poll until the run finishes. |
-| `timeout` | `float` | `1800` | Maximum wait time in seconds. Raises Python's `TimeoutError` if exceeded. |
+| `timeout` | `float` | `1800` | Maximum wait time in seconds. Raises `asyncio.TimeoutError` if exceeded. |
 
 Supported on `run_task`, `run_workflow`, and `login`.
 
