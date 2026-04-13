@@ -162,7 +162,7 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 | Function | Description |
 |----------|-------------|
 | `extract(prompt, schema?)` | Extract structured or unstructured data from the page |
-| `validate(complete_criterion?, terminate_criterion?)` | Check completion or termination conditions; returns without error if condition holds |
+| `validate(complete_criterion?, terminate_criterion?)` | Check completion or termination conditions. Returns normally if the complete criterion is met. Raises `ScriptTerminationException` if the terminate criterion is met. |
 | `prompt(prompt, schema?)` | Raw LLM call with page context |
 
 ### Task execution
@@ -171,30 +171,30 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 |----------|-------------|
 | `action(prompt, **kwargs)` | Run a single AI navigation action (supports caching via `cache_key`) |
 | `run_task(prompt, **kwargs)` | Run a full multi-step AI task — see [Tasks](/sdk-reference/tasks) for parameters |
-| `run_script(script_id, **kwargs)` | Run a stored script by ID |
+| `run_script(path, parameters?, ...)` | Execute a script file by filesystem path |
 | `run_code(code, **kwargs)` | Execute a code block |
 
 ### Authentication
 
 | Function | Description |
 |----------|-------------|
-| `login(credential_id, **kwargs)` | Log in using a stored credential — see [Credentials](/sdk-reference/credentials) |
+| `login(prompt, url?, ...)` | Navigate the login flow described by `prompt`. Use `url` to navigate first. Passes control to the `LoginBlock` for credential-based login; does **not** take a `credential_id` directly — credentials are configured in the workflow definition. |
 
 ### File operations
 
 | Function | Description |
 |----------|-------------|
-| `download(prompt, **kwargs)` | Download files matching a description |
-| `parse_file(file_path, **kwargs)` | Parse a local file and return its content |
-| `parse_pdf(file_path, **kwargs)` | Parse a PDF and return structured content |
-| `upload_file(file_path, **kwargs)` | Upload a file to the current page |
+| `download(prompt, url?, ...)` | Download files matching a description |
+| `parse_file(file_url, file_type, schema?)` | Parse a file from a URL (`file_type` is required: `"csv"`, `"excel"`, or `"pdf"`) |
+| `parse_pdf(file_url, schema?)` | Parse a PDF from a URL and return structured content |
+| `upload_file(label?, storage_type?, path?, ...)` | Upload a downloaded file to S3 or Azure Blob storage |
 
 ### Data rendering
 
 | Function | Description |
 |----------|-------------|
-| `render_list(items, template)` | Render a Jinja2 template over a list |
-| `render_template(template, **kwargs)` | Render a single Jinja2 template |
+| `render_list(template, data?)` | Render a Jinja2 template string that evaluates to a Python list literal and return the list |
+| `render_template(template, data?)` | Render a Jinja2 template string against workflow context and an optional `data` dict |
 
 ### Communication
 
