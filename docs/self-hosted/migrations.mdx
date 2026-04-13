@@ -85,7 +85,7 @@ Migration files are named `<hash>_<description>.py`. The chain is linear; each f
 
 ## Docker Compose
 
-If you run Skyvern with the provided `docker-compose.yml`, migrations run automatically when the server container starts:
+If you run Skyvern with the provided `docker-compose.yml` (see [Docker Deployment](/self-hosted/docker)), migrations run automatically when the server container starts:
 
 ```yaml
 # excerpt from docker-compose.yml
@@ -104,7 +104,7 @@ docker compose exec skyvern alembic current
 
 ## Kubernetes
 
-If you deploy Skyvern on Kubernetes, run migrations as an init container or a one-off Job before the main Deployment rolls out. Example init container:
+If you deploy Skyvern on [Kubernetes](/self-hosted/kubernetes), run migrations as an init container or a one-off Job before the main Deployment rolls out. Example init container:
 
 ```yaml
 initContainers:
@@ -122,6 +122,10 @@ This ensures the schema is up to date before any application Pod starts.
 
 ## Creating a new migration
 
+<Note>
+This section is for contributors modifying Skyvern's source code. If you are operating a self-hosted deployment without making code changes, you do not need to create migrations — only run the existing ones with `alembic upgrade head`.
+</Note>
+
 If you are developing Skyvern locally and modify SQLAlchemy models, generate a migration automatically:
 
 ```bash
@@ -133,6 +137,8 @@ Review the generated file in `alembic/versions/` before committing — `--autoge
 ---
 
 ## Troubleshooting
+
+The errors below cover the most common issues when running `alembic` commands.
 
 ### `Can't locate revision identified by '<hash>'`
 

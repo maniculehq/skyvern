@@ -6,6 +6,8 @@ slug: sdk-reference/decorators
 
 The Skyvern Python SDK ships a set of decorators and top-level script functions that let you write browser automation as plain Python functions. This is the **script-based** API — an alternative to calling `client.run_task()` — that gives you fine-grained control over execution flow, caching, and reuse.
 
+If you want inline AI calls within an existing Playwright script without the script-based control flow, use [SkyvernPage](/sdk-reference/skyvern-page) directly instead.
+
 All decorators and functions are exported directly from the `skyvern` package:
 
 ```python
@@ -150,7 +152,8 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 
 | Function | Description |
 |----------|-------------|
-| `run_task(prompt, **kwargs)` | Run a full multi-step AI task |
+| `action(prompt, **kwargs)` | Run a single AI navigation action (supports caching via `cache_key`) |
+| `run_task(prompt, **kwargs)` | Run a full multi-step AI task — see [Tasks](/sdk-reference/tasks) for parameters |
 | `run_script(script_id, **kwargs)` | Run a stored script by ID |
 | `run_code(code, **kwargs)` | Execute a code block |
 
@@ -158,7 +161,7 @@ These top-level functions are the building blocks of Skyvern scripts. Each maps 
 
 | Function | Description |
 |----------|-------------|
-| `login(credential_id, **kwargs)` | Log in using a stored credential |
+| `login(credential_id, **kwargs)` | Log in using a stored credential — see [Credentials](/sdk-reference/credentials) |
 
 ### File operations
 
@@ -243,13 +246,27 @@ asyncio.run(main())
     icon="wand-magic-sparkles"
     href="/sdk-reference/skyvern-page"
   >
-    Explore all AI page methods and the browser agent
+    Inline AI page methods and the browser agent
+  </Card>
+  <Card
+    title="Tasks"
+    icon="play"
+    href="/sdk-reference/tasks"
+  >
+    Run and monitor browser automations via the client API
   </Card>
   <Card
     title="Workflows"
     icon="diagram-project"
     href="/sdk-reference/workflows"
   >
-    Run and manage workflows via the REST API
+    Run and manage multi-step workflows via the REST API
+  </Card>
+  <Card
+    title="Credentials"
+    icon="key"
+    href="/sdk-reference/credentials"
+  >
+    Store and reference login credentials securely
   </Card>
 </CardGroup>
