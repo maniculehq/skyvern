@@ -1,5 +1,6 @@
 ---
 title: Testing the Skyvern UI (Vitest)
+subtitle: Run, understand, and extend the frontend Vitest suite
 slug: contributing/vitest-frontend
 ---
 
@@ -119,6 +120,25 @@ export default defineConfig({
 The `passWithNoTests: true` flag means Vitest will not fail if a new branch adds no test files. Removing this flag would make CI more strict, but is a breaking change for branches where tests are not yet written.
 </Note>
 
-## Coverage note
+## Scope
 
 The current test suite covers **pure utility functions and hooks only** — there are no component-level tests (no `@testing-library/react` or DOM rendering). If you are adding a React component, write unit tests for any non-trivial helper functions it depends on; defer component integration tests to Playwright end-to-end tests.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card
+    title="Testing the TypeScript SDK (Vitest)"
+    icon="code"
+    href="/contributing/vitest-ts-sdk"
+  >
+    Run and extend the 18-file Vitest suite for `@skyvern/client`
+  </Card>
+  <Card
+    title="Adding Vitest to CI"
+    icon="gear"
+    href="/contributing/adding-vitest-to-ci"
+  >
+    Gate both test suites on every pull request
+  </Card>
+</CardGroup>

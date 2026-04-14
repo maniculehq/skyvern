@@ -1,9 +1,12 @@
 ---
 title: Adding Vitest to CI
+subtitle: Gate the frontend and TypeScript SDK test suites on every pull request
 slug: contributing/adding-vitest-to-ci
 ---
 
 Skyvern's Vitest test suites (frontend and TypeScript SDK) are **not currently executed in CI**. This page explains the current state and shows the minimal workflow changes needed to gate them on every pull request.
+
+Before reading this page, see [Testing the Skyvern UI (Vitest)](/contributing/vitest-frontend) and [Testing the TypeScript SDK (Vitest)](/contributing/vitest-ts-sdk) for an explanation of what each suite covers and how to run it locally.
 
 ## Current state
 
@@ -88,7 +91,7 @@ The unit and wire tests run as separate steps so failures are reported independe
 If you only want to run unit tests (faster, no mock-server spin-up) in a first pass, use `pnpm test:unit` and add a follow-up step for `pnpm test:wire` guarded by a path filter.
 </Tip>
 
-## passWithNoTests behaviour
+## `passWithNoTests` and safe rollout
 
 Both `skyvern-frontend/vitest.config.ts` and `skyvern-ts/client/vitest.config.ts` set `passWithNoTests: true`. This means:
 
@@ -99,6 +102,25 @@ If you want stricter protection, remove `passWithNoTests: true` after adding ini
 
 ## Recommended rollout
 
-1. **Add frontend Vitest step** first — it is a low-risk addition to an existing job and uses existing Node setup.
-2. **Add the TS SDK job** — it requires pnpm setup but is otherwise self-contained.
+1. **Add frontend Vitest step** first — it is a low-risk addition to an existing job and uses existing Node setup. See [Testing the Skyvern UI (Vitest)](/contributing/vitest-frontend) for the full test inventory.
+2. **Add the TS SDK job** — it requires pnpm setup but is otherwise self-contained. See [Testing the TypeScript SDK (Vitest)](/contributing/vitest-ts-sdk) for the full test inventory.
 3. **Remove `passWithNoTests: true`** from both configs once the baseline test count is stable, to prevent accidental regressions.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card
+    title="Testing the Skyvern UI (Vitest)"
+    icon="browser"
+    href="/contributing/vitest-frontend"
+  >
+    Run and extend the 10-file Vitest suite for the React frontend
+  </Card>
+  <Card
+    title="Testing the TypeScript SDK (Vitest)"
+    icon="code"
+    href="/contributing/vitest-ts-sdk"
+  >
+    Run and extend the 18-file Vitest suite for `@skyvern/client`
+  </Card>
+</CardGroup>
