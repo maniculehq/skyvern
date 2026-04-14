@@ -91,6 +91,24 @@ The unit and wire tests run as separate steps so failures are reported independe
 If you only want to run unit tests (faster, no mock-server spin-up) in a first pass, use `pnpm test:unit` and add a follow-up step for `pnpm test:wire` guarded by a path filter.
 </Tip>
 
+## Scoping jobs with path filters
+
+If you want to skip the TypeScript SDK tests when no SDK files changed, add a `paths` filter to the trigger. The job still runs on every PR against `main` when the filter is omitted, which is the simpler starting point.
+
+```yaml
+on:
+  pull_request:
+    paths:
+      - "skyvern-ts/client/**"
+      - ".github/workflows/ci.yml"
+```
+
+Apply the same pattern to the frontend job if you want to gate it only on changes under `skyvern-frontend/`. Keep `.github/workflows/ci.yml` in every `paths` list so that CI-config changes always trigger a full run.
+
+<Warning>
+Path filters interact with GitHub's required-status-check feature. If a job is skipped because no matching paths changed, GitHub records it as "skipped" rather than "passed". When the job is a required status check, **skipped** may count as a failure depending on your branch protection settings. Consider using the `paths-ignore` inverse pattern or the [`actions/skip-duplicate-runs` action](https://github.com/marketplace/actions/skip-duplicate-runs) to handle this cleanly.
+</Warning>
+
 ## `passWithNoTests` and safe rollout
 
 Both `skyvern-frontend/vitest.config.ts` and `skyvern-ts/client/vitest.config.ts` set `passWithNoTests: true`. This means:
@@ -105,6 +123,14 @@ If you want stricter protection, remove `passWithNoTests: true` after adding ini
 1. **Add frontend Vitest step** first — it is a low-risk addition to an existing job and uses existing Node setup. See [Testing the Skyvern UI (Vitest)](/contributing/vitest-frontend) for the full test inventory.
 2. **Add the TS SDK job** — it requires pnpm setup but is otherwise self-contained. See [Testing the TypeScript SDK (Vitest)](/contributing/vitest-ts-sdk) for the full test inventory.
 3. **Remove `passWithNoTests: true`** from both configs once the baseline test count is stable, to prevent accidental regressions.
+
+## Version pinning notes
+
+**`pnpm/action-setup`**: The YAML above uses `@v3`. Pin to a specific commit SHA in production (matching the pattern used by other actions in `ci.yml`) to avoid unexpected breakage from upstream action changes.
+
+**Node.js version**: The TS SDK job uses `node-version: "20"` rather than the `.nvmrc` file because `skyvern-ts/client/` does not ship its own `.nvmrc`. If that changes, switch to `node-version-file: skyvern-ts/client/.nvmrc` to keep the version consistent.
+
+**Wire test isolation**: Each test call to `mockServerPool.createServer()` binds the MSW server to a random local port. This means multiple CI shards or concurrent workflow runs never compete for the same port — no additional configuration is needed.
 
 ## See also
 

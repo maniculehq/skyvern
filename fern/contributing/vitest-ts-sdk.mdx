@@ -165,6 +165,81 @@ describe("custom tests", () => {
 
 The `custom.test.ts` file is picked up by the **unit** project (it sits in the `tests/` root, which the unit project includes via `include: ["**/*.test.{js,ts,jsx,tsx}"]`).
 
+## Gotchas and edge cases
+
+The following non-obvious behaviours are captured in the unit test suite and are worth knowing before you extend it.
+
+### requestWithRetries — retry semantics
+
+The fetcher retries on **408, 429, 500, and 502** status codes only. Other 4xx and 5xx codes (e.g. 400, 403, 404, 503) are returned immediately without retrying.
+
+The `maxRetries` parameter counts *extra* attempts, not total calls. `maxRetries=2` means up to **3** HTTP calls (1 initial + 2 retries):
+
+```typescript
+requestWithRetries(() => fetch(url), 2);
+// → at most 3 calls if all return 500
+```
+
+Backoff uses exponential doubling with jitter, starting at 1 second: 1 s → 2 s → 4 s → … up to a hard cap of **60 seconds** (`MAX_RETRY_DELAY`). A `Retry-After: 120` header would normally request a 120-second wait but gets capped at 60 seconds.
+
+Two header forms are respected for rate-limit delays:
+
+| Header | Format | Example |
+|--------|--------|---------|
+| `Retry-After` | Integer seconds | `Retry-After: 5` → wait 5 s |
+| `Retry-After` | HTTP date string | `Retry-After: Wed, 15 Apr 2026 00:00:00 GMT` |
+| `X-RateLimit-Reset` | Unix timestamp (seconds) | `X-RateLimit-Reset: 1744675200` |
+
+The tests use `vi.useFakeTimers()` and mock `Math.random` to `0.5` for deterministic jitter. If you write tests for retry logic, replicate this setup or the backoff assertions will be flaky.
+
+### toQueryString — array and null serialisation
+
+`toQueryString` (from `core/url`) has several subtle behaviours that differ from common expectations:
+
+- **Arrays default to index notation**: `{ items: ["a", "b"] }` → `items%5B0%5D=a&items%5B1%5D=b`. Pass `{ arrayFormat: "repeat" }` to get `items=a&items=b`.
+- **`null` becomes an empty string**; `undefined` is **omitted** at the top level:
+  ```typescript
+  toQueryString({ age: null, email: undefined, name: "Jo" })
+  // → "age=&name=Jo"   (email dropped entirely)
+  ```
+- **`undefined` in arrays skips the index**; `null` keeps it:
+  ```typescript
+  toQueryString({ items: ["a", null, "c", undefined, "e"] })
+  // → "items%5B0%5D=a&items%5B1%5D=&items%5B2%5D=c&items%5B4%5D=e"
+  //                                                   ↑ index 3 absent
+  ```
+- **Primitive top-level values return empty string**: passing `"hello"` or `42` directly (not wrapped in an object) silently returns `""`.
+
+### FormDataWrapper — setup requirement
+
+`FormDataWrapper` is a two-phase object: you must call `await formData.setup()` before appending anything. Forgetting `setup()` will cause a runtime error. The factory function `newFormData()` runs setup automatically and is the preferred approach:
+
+```typescript
+// ✓ factory — setup included
+const fd = await newFormData();
+fd.append("field", "value");
+
+// ✓ manual — setup must be explicit
+const fd = new FormDataWrapper();
+await fd.setup();
+fd.append("field", "value");
+```
+
+Other `FormDataWrapper` behaviours captured in the tests:
+
+- A `Blob` appended without an explicit `filename` option gets the filename `"blob"`.
+- A `File` object's built-in filename can be overridden by passing `{ data: file, filename: "override.txt" }`.
+- `Readable` streams with a `.path` property have their filename auto-detected, including Windows-style paths (`C:\test\path\file.txt` → `"file.txt"`).
+- `getRequest()` always returns `{ body: FormData, headers: {}, duplex: "half" }`. The headers object is intentionally empty — the runtime (undici / browser fetch) injects the `Content-Type: multipart/form-data; boundary=…` header automatically.
+
+### globals: true and custom test imports
+
+The `vitest.config.ts` sets `globals: true` for both the unit and wire projects. Generated test files rely on this (no explicit `import { describe, it, expect } from "vitest"`). `tests/custom.test.ts` is part of the **unit** project and also benefits from globals, but you may import explicitly if your linter or editor's type-checking requires it — both styles work.
+
+### Wire test port allocation
+
+Each `mockServerPool.createServer()` call binds to a random local port, so parallel test runs (e.g. `--shard` or concurrent CI jobs) do not conflict. You do not need to manage ports manually.
+
 ## Configuration reference
 
 `skyvern-ts/client/vitest.config.ts`:

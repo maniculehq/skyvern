@@ -120,6 +120,57 @@ export default defineConfig({
 The `passWithNoTests: true` flag means Vitest will not fail if a new branch adds no test files. Removing this flag would make CI more strict, but is a breaking change for branches where tests are not yet written.
 </Note>
 
+## Gotchas and edge cases
+
+The following non-obvious behaviours are captured in the test suite and are worth knowing before you extend it.
+
+### TSON.parse — template substitution rules
+
+`TSON.parse` replaces `{{ expression }}` tokens with the sentinel `<STUB>` so the resulting string is valid JSON. Three things that trip people up:
+
+- **Quoted vs. unquoted**: `{{ x }}` inside a JSON *string value* (`"{{ x }}"`) is **preserved as-is**. Only bare (unquoted) tokens are replaced with `<STUB>`. This matches Jinja-style template semantics: the raw string value stays intact.
+- **Trailing commas fail**: Standard `JSON.parse` is used after substitution, so a trailing comma (`"baz": {{quux}},`) causes a parse error even after the token is replaced.
+- **Nested braces parse fine**: `{{ {{ nested }} }}` is treated as a single outer token and becomes `<STUB>` — the parser is brace-depth-aware, not regex-based.
+
+### isRequired vs. isMissingRequiredValue — falsy defaults
+
+A parameter is **required** when its `default_value` is `null` or `undefined`. Falsy-but-intentional defaults (`false`, `0`, `""`) do **not** make a parameter required:
+
+```typescript
+// All three return isRequired → false:
+{ default_value: false }   // boolean parameter
+{ default_value: 0 }       // integer parameter
+{ default_value: "" }      // string parameter
+```
+
+`isMissingRequiredValue` has a further distinction: an empty string `""` is a **valid** value for `string`-typed parameters but is treated as **missing** for `integer`, `float`, `boolean`, `json`, `file_url`, and `credential_id`. Keep this in mind when writing tests that validate form submission.
+
+### validateJson — template placeholders must be quoted
+
+The HTTP request node's JSON validator accepts Jinja-style template tokens, but only when they appear inside JSON string values. An unquoted placeholder in a value position produces an actionable error:
+
+```typescript
+validateJson('{"url": {{ webhook_url }}}')
+// → { valid: false, message: "Template placeholders must be wrapped in quotes …" }
+
+validateJson('{"url": "{{ webhook_url }}"}')
+// → { valid: true, message: "Valid JSON" }
+```
+
+The same rule applies to array elements and object keys.
+
+### validateUrl — protocol restriction
+
+`validateUrl` only accepts `http://` and `https://` URLs. Any other scheme (e.g. `ftp://`, `ws://`) returns `{ valid: false, message: "URL must use HTTP or HTTPS protocol" }`. The empty string also fails with `"URL is required"`.
+
+### formatVersion — SHA truncation length
+
+`formatVersion` passes arbitrary version strings through unchanged *except* for 40-character git SHAs, which are truncated to 7 characters. If you ever pass a 40-character string that is not a SHA (unlikely in practice), it will be truncated. Strings of any other length are returned as-is.
+
+### Running from the right directory
+
+All `npm` commands must be run from inside `skyvern-frontend/`, not from the repository root. The `vitest.config.ts` uses `path.resolve(__dirname, "./src")` for the `@` alias, so running `npm test` from the wrong working directory will fail to resolve that alias.
+
 ## Scope
 
 The current test suite covers **pure utility functions and hooks only** — there are no component-level tests (no `@testing-library/react` or DOM rendering). If you are adding a React component, write unit tests for any non-trivial helper functions it depends on; defer component integration tests to Playwright end-to-end tests.
