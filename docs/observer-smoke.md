@@ -1,0 +1,1 @@
+observer smoke test
