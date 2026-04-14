@@ -35,18 +35,18 @@ All commands run from `skyvern-ts/client/`.
 | `pnpm test:wire` | Wire project only (`vitest --project wire`) |
 
 ```bash
-# Run everything (enters watch mode locally; single pass in CI/non-TTY)
+# Run everything — watch mode locally; single pass in CI/non-TTY
 pnpm test
 
-# Run only unit tests (faster, no mock server spin-up; single pass)
+# Run only unit tests (faster, no mock server spin-up) — watch mode locally
 pnpm test:unit
 
-# Run only wire tests (API contract tests; single pass)
+# Run only wire tests (API contract tests) — watch mode locally
 pnpm test:wire
 ```
 
 <Note>
-`pnpm test` runs `vitest` without the `run` flag. In a terminal this starts interactive watch mode — press `q` to quit. In CI (no TTY) Vitest detects the non-interactive environment and exits after one pass. For a guaranteed single-pass run locally, use `pnpm test:unit` and `pnpm test:wire` separately.
+All three scripts run `vitest` without the `run` flag. In a terminal (TTY) this starts interactive watch mode — press `q` to quit. In CI (no TTY) Vitest auto-detects the non-interactive environment and exits after one pass. For a guaranteed single-pass run in a terminal, bypass the package scripts: `pnpm exec vitest run --project unit` or `pnpm exec vitest run --project wire`.
 </Note>
 
 ## Unit tests
@@ -175,7 +175,7 @@ The following non-obvious behaviours are captured in the unit test suite and are
 
 ### requestWithRetries — retry semantics
 
-The fetcher retries on **408, 429, 500, and 502** status codes only. Other 4xx and 5xx codes (e.g. 400, 403, 404, 503) are returned immediately without retrying.
+The fetcher retries on **408, 429, and all 5xx** status codes (`response.status >= 500`). Other 4xx codes (e.g. 400, 403, 404) are returned immediately without retrying.
 
 The `maxRetries` parameter counts *extra* attempts, not total calls. `maxRetries=2` means up to **3** HTTP calls (1 initial + 2 retries):
 
