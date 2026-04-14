@@ -164,6 +164,8 @@ browser_sessions/
 videos/
 skyvern/artifacts/
 artifacts/
+# Un-ignore TypeScript SDK source modules that happen to share the name "artifacts"
+!skyvern-ts/client/src/api/resources/artifacts/
 traces/
 *.pkl
 har/

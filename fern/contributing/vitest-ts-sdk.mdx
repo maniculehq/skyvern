@@ -35,15 +35,19 @@ All commands run from `skyvern-ts/client/`.
 | `pnpm test:wire` | Wire project only (`vitest --project wire`) |
 
 ```bash
-# Run everything
+# Run everything (enters watch mode locally; single pass in CI/non-TTY)
 pnpm test
 
-# Run only unit tests (faster, no mock server spin-up)
+# Run only unit tests (faster, no mock server spin-up; single pass)
 pnpm test:unit
 
-# Run only wire tests (API contract tests)
+# Run only wire tests (API contract tests; single pass)
 pnpm test:wire
 ```
+
+<Note>
+`pnpm test` runs `vitest` without the `run` flag. In a terminal this starts interactive watch mode — press `q` to quit. In CI (no TTY) Vitest detects the non-interactive environment and exits after one pass. For a guaranteed single-pass run locally, use `pnpm test:unit` and `pnpm test:wire` separately.
+</Note>
 
 ## Unit tests
 

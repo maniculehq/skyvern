@@ -41,14 +41,14 @@ There are 10 test files co-located with the modules they cover.
 |------|---------|---------------|
 | `src/util/equality.test.ts` | `deepEqualStringArrays` | Order-insensitive array comparison (8 cases) |
 | `src/util/taskRunPayload.test.ts` | `buildTaskRunPayload` | Maps the v1 task form to the `/v1/run/tasks` request body (4 cases) |
-| `src/util/timeFormat.test.ts` | `formatTimeRemaining` and related helpers | Formats seconds into human-readable countdown strings (~15 cases) |
+| `src/util/timeFormat.test.ts` | `formatTimeRemaining` and related helpers | Formats seconds into human-readable countdown strings (16 tests) |
 | `src/util/tson.test.ts` | `TSON.parse` | Parses Jinja-style `{{ variable }}` templates inside JSON strings (9 cases) |
 | `src/util/version.test.ts` | `formatVersion` | Displays semver versions and truncated git SHAs in the UI (3 cases) |
 | `src/hooks/useVerificationCodeAlert.test.ts` | `formatTimeRemaining` (hook context) | Formats countdown values used by the TOTP alert hook (5 cases) |
-| `src/routes/workflows/components/scheduleParameters.test.ts` | Schedule parameter helpers | Validates, serialises, and transforms workflow schedule parameters (~30 cases, the largest file at 626 lines) |
-| `src/routes/workflows/editor/nodes/HttpRequestNode/httpValidation.test.ts` | HTTP request node validation | Validates URL, method, headers, and body in the HTTP block (~10 cases) |
-| `src/routes/workflows/editor/nodes/WorkflowTriggerNode/formatDefaultValue.test.ts` | Trigger default-value helpers | Formats default parameter values for the workflow trigger node (~8 cases) |
-| `src/routes/workflows/hooks/useScheduleParameterState.test.ts` | `useScheduleParameterState` hook | State transitions and derived values for the schedule-parameter UI (~15 cases) |
+| `src/routes/workflows/components/scheduleParameters.test.ts` | Schedule parameter helpers | Validates, serialises, and transforms workflow schedule parameters (60 tests, the largest file at 626 lines) |
+| `src/routes/workflows/editor/nodes/HttpRequestNode/httpValidation.test.ts` | HTTP request node validation | Validates URL, method, headers, and body in the HTTP block (19 tests) |
+| `src/routes/workflows/editor/nodes/WorkflowTriggerNode/formatDefaultValue.test.ts` | Trigger default-value helpers | Formats default parameter values for the workflow trigger node (5 tests) |
+| `src/routes/workflows/hooks/useScheduleParameterState.test.ts` | `useScheduleParameterState` hook | State transitions and derived values for the schedule-parameter UI (5 tests) |
 
 ## Adding new tests
 
