@@ -162,6 +162,14 @@ navigation:
             path: integrations/workato.mdx
           - page: Ollama + LiteLLM
             path: integrations/ollama-litellm.mdx
+      - section: Contributing
+        contents:
+          - page: Testing the UI (Vitest)
+            path: contributing/vitest-frontend.mdx
+          - page: Testing the TypeScript SDK (Vitest)
+            path: contributing/vitest-ts-sdk.mdx
+          - page: Adding Vitest to CI
+            path: contributing/adding-vitest-to-ci.mdx
   - tab: api
     layout:
       - api: API Reference

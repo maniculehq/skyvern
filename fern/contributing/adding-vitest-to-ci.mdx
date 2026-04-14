@@ -1,0 +1,104 @@
+---
+title: Adding Vitest to CI
+slug: contributing/adding-vitest-to-ci
+---
+
+Skyvern's Vitest test suites (frontend and TypeScript SDK) are **not currently executed in CI**. This page explains the current state and shows the minimal workflow changes needed to gate them on every pull request.
+
+## Current state
+
+The CI workflow (`.github/workflows/ci.yml`) runs three things:
+
+| Job | What it does |
+|-----|-------------|
+| `test` | `uv run pytest` (Python unit tests) + `pre-commit` hooks + Alembic migration check |
+| `fe-lint-build` | `npm run lint` + `npm run build` in `skyvern-frontend/` |
+| *(none)* | `pnpm test` in `skyvern-ts/client/` — **not run** |
+
+The `fe-lint-build` job installs Node.js dependencies and runs the linter and build but does **not** call `npm test` (which would run `vitest run`). There is no job for the TypeScript SDK at all.
+
+## Adding frontend Vitest tests
+
+Add a `npm test` step to the existing `fe-lint-build` job, after the build step:
+
+```yaml
+  fe-lint-build:
+    name: Frontend Lint and Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./skyvern-frontend
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install Node.js dependencies
+        run: npm ci
+      - name: Run linter
+        run: npm run lint
+      - name: Run build
+        run: npm run build
+      # ↓ Add this step
+      - name: Run Vitest (frontend)
+        run: npm test
+```
+
+`npm test` executes `vitest run` — a single non-interactive pass that exits with code 0 on success. The `passWithNoTests: true` flag in `vitest.config.ts` ensures the job does not fail if a branch introduces no test files.
+
+## Adding TypeScript SDK Vitest tests
+
+Add a new job to `.github/workflows/ci.yml`:
+
+```yaml
+  ts-sdk-test:
+    name: TypeScript SDK Tests (Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./skyvern-ts/client
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: "10.14.0"
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run unit tests
+        run: pnpm test:unit
+      - name: Run wire tests
+        run: pnpm test:wire
+```
+
+The unit and wire tests run as separate steps so failures are reported independently. Both use the MSW mock server (no live Skyvern server needed) and complete in seconds.
+
+<Tip>
+If you only want to run unit tests (faster, no mock-server spin-up) in a first pass, use `pnpm test:unit` and add a follow-up step for `pnpm test:wire` guarded by a path filter.
+</Tip>
+
+## passWithNoTests behaviour
+
+Both `skyvern-frontend/vitest.config.ts` and `skyvern-ts/client/vitest.config.ts` set `passWithNoTests: true`. This means:
+
+- A branch that **does not change** any test file will still pass the Vitest step.
+- A branch that **deletes** all test files will also pass — the flag does not protect against accidental deletion.
+
+If you want stricter protection, remove `passWithNoTests: true` after adding initial test coverage; the test run will then fail if the `include` glob matches zero files.
+
+## Recommended rollout
+
+1. **Add frontend Vitest step** first — it is a low-risk addition to an existing job and uses existing Node setup.
+2. **Add the TS SDK job** — it requires pnpm setup but is otherwise self-contained.
+3. **Remove `passWithNoTests: true`** from both configs once the baseline test count is stable, to prevent accidental regressions.

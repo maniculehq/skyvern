@@ -1,0 +1,124 @@
+---
+title: Testing the Skyvern UI (Vitest)
+slug: contributing/vitest-frontend
+---
+
+The Skyvern frontend has a Vitest test suite that covers utility functions and workflow helpers in the React UI. This guide explains how to run the tests, what they cover, and how to add new tests.
+
+## Prerequisites
+
+- **Node.js 20.12.2** — version pinned in `.nvmrc` at the repository root. Use `nvm use` to switch automatically.
+- **Dependencies installed** — run `npm install` once inside `skyvern-frontend/`:
+
+```bash
+cd skyvern-frontend
+npm install
+```
+
+## Running the tests
+
+From the `skyvern-frontend/` directory:
+
+```bash
+# Run the full suite once (no watch mode)
+npm test
+```
+
+This invokes `vitest run`. Vitest exits with code 0 even if no test files match (controlled by `passWithNoTests: true` in the config), so a green run on a branch that adds no new test files is expected.
+
+To run in watch mode during development:
+
+```bash
+npx vitest
+```
+
+## Test inventory
+
+There are 10 test files co-located with the modules they cover.
+
+| File | Subject | What it tests |
+|------|---------|---------------|
+| `src/util/equality.test.ts` | `deepEqualStringArrays` | Order-insensitive array comparison (8 cases) |
+| `src/util/taskRunPayload.test.ts` | `buildTaskRunPayload` | Maps the v1 task form to the `/v1/run/tasks` request body (4 cases) |
+| `src/util/timeFormat.test.ts` | `formatTimeRemaining` and related helpers | Formats seconds into human-readable countdown strings (~15 cases) |
+| `src/util/tson.test.ts` | `TSON.parse` | Parses Jinja-style `{{ variable }}` templates inside JSON strings (9 cases) |
+| `src/util/version.test.ts` | `formatVersion` | Displays semver versions and truncated git SHAs in the UI (3 cases) |
+| `src/hooks/useVerificationCodeAlert.test.ts` | `formatTimeRemaining` (hook context) | Formats countdown values used by the TOTP alert hook (5 cases) |
+| `src/routes/workflows/components/scheduleParameters.test.ts` | Schedule parameter helpers | Validates, serialises, and transforms workflow schedule parameters (~30 cases, the largest file at 626 lines) |
+| `src/routes/workflows/editor/nodes/HttpRequestNode/httpValidation.test.ts` | HTTP request node validation | Validates URL, method, headers, and body in the HTTP block (~10 cases) |
+| `src/routes/workflows/editor/nodes/WorkflowTriggerNode/formatDefaultValue.test.ts` | Trigger default-value helpers | Formats default parameter values for the workflow trigger node (~8 cases) |
+| `src/routes/workflows/hooks/useScheduleParameterState.test.ts` | `useScheduleParameterState` hook | State transitions and derived values for the schedule-parameter UI (~15 cases) |
+
+## Adding new tests
+
+### Where to place test files
+
+Co-locate the test file with the module it tests:
+
+```
+src/util/myHelper.ts
+src/util/myHelper.test.ts   ← place it here
+```
+
+Vitest discovers all files matching `**/*.test.{ts,tsx}` in the `src/` tree automatically — no config changes needed.
+
+### Import pattern
+
+All existing tests use named imports from `vitest`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+// or
+import { describe, test, expect } from "vitest";
+```
+
+Use the `@` alias to import from `src/` without relative path climbing:
+
+```typescript
+import { myHelper } from "@/util/myHelper";
+```
+
+The `@` alias resolves to `./src` and is configured in both `vitest.config.ts` and `tsconfig.json`.
+
+### Example test
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { myHelper } from "@/util/myHelper";
+
+describe("myHelper", () => {
+  it("returns the expected result", () => {
+    expect(myHelper("input")).toBe("expected output");
+  });
+});
+```
+
+## Configuration reference
+
+`skyvern-frontend/vitest.config.ts`:
+
+```typescript
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+
+export default defineConfig({
+  plugins: [react()],          // SWC-based React transform (required for TSX)
+  test: {
+    passWithNoTests: true,     // Exit 0 even if no test files are found
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),  // "@/foo" → "src/foo"
+    },
+  },
+});
+```
+
+<Note>
+The `passWithNoTests: true` flag means Vitest will not fail if a new branch adds no test files. Removing this flag would make CI more strict, but is a breaking change for branches where tests are not yet written.
+</Note>
+
+## Coverage note
+
+The current test suite covers **pure utility functions and hooks only** — there are no component-level tests (no `@testing-library/react` or DOM rendering). If you are adding a React component, write unit tests for any non-trivial helper functions it depends on; defer component integration tests to Playwright end-to-end tests.
