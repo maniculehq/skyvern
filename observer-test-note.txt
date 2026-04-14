@@ -1,0 +1,3 @@
+Synthetic PR marker from Manicule observer smoke test.
+Added:   2026-04-14
+Contact: observer@manicule.dev
