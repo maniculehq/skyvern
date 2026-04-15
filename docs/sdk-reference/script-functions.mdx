@@ -578,12 +578,12 @@ await parse_pdf(
 
 ## parse_file
 
-Parse a CSV, Excel, or PDF file from a URL.
+Parse a file from a URL and extract its content, optionally into a structured schema.
 
 ```python
 async def parse_file(
     file_url: str,
-    file_type: str,          # "csv" | "excel" | "pdf"
+    file_type: str,          # "csv" | "excel" | "pdf" | "image" | "docx"
     schema: dict | None = None,
     label: str | None = None,
     parameters: list[str] | None = None,
@@ -594,7 +594,7 @@ async def parse_file(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `file_url` | `str` | — | **Required.** URL of the file. |
-| `file_type` | `str` | — | **Required.** `"csv"`, `"excel"`, or `"pdf"`. |
+| `file_type` | `str` | — | **Required.** One of `"csv"`, `"excel"`, `"pdf"`, `"image"`, or `"docx"`. |
 | `schema` | `dict` | `None` | JSON Schema for structured output. |
 | `label` | `str` | `None` | Block label. |
 
@@ -602,31 +602,33 @@ async def parse_file(
 
 ## run_script
 
-Execute a saved Skyvern script by its ID. Use this to run a reusable automation defined in the Scripts section.
+Execute a Skyvern Python script file programmatically. This is the same function invoked by `skyvern run <path>` from the CLI — call it from your own Python code when you want to launch a script without going through the CLI.
 
 ```python
 async def run_script(
-    script_id: str,
+    path: str,
     parameters: dict | None = None,
-    label: str | None = None,
 ) -> None
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `script_id` | `str` | — | **Required.** The permanent ID of the script to execute. |
+| `path` | `str` | — | **Required.** Path to the Python script file to execute. |
 | `parameters` | `dict` | `None` | Input parameters to pass to the script. |
-| `label` | `str` | `None` | Block label. |
+
+<Note>
+`run_script` is the script launcher — it is **not** called inside a `@workflow` function. To trigger another workflow from within a running workflow, use the [`workflow_trigger` block](/multi-step-automations/workflow-blocks-reference#workflow-trigger) instead.
+</Note>
 
 <CodeGroup>
 ```python Python
+import asyncio
 from skyvern import run_script
 
-await run_script(
-    script_id="scr_abc123",
-    parameters={"url": "https://app.example.com", "user_id": "{{user_id}}"},
-    label="run_report_script",
-)
+asyncio.run(run_script(
+    path="my_automation.py",
+    parameters={"start_url": "https://app.example.com", "user_id": "u123"},
+))
 ```
 </CodeGroup>
 
