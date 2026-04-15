@@ -115,10 +115,10 @@ await skyvern.run_task(
     title: str | None = None,
     error_code_mapping: dict | None = None,
     data_extraction_schema: dict | None = None,
-    proxy_location: str | ProxyLocation | None = None,
+    proxy_location: ProxyLocation | None = None,
     max_steps: int | None = None,
     wait_for_completion: bool = False,
-    timeout: float = 300.0,
+    timeout: float = 1800.0,
     browser_session_id: str | None = None,
     **kwargs,
 ) -> TaskRunResponse
@@ -137,10 +137,10 @@ Runs a single task described in natural language.
 | `title` | `str | None` | Human-readable label for the task run |
 | `error_code_mapping` | `dict | None` | Map error conditions to custom error codes |
 | `data_extraction_schema` | `dict | None` | JSON Schema for structured data to extract |
-| `proxy_location` | `str | ProxyLocation | None` | Route through a residential proxy in a specific country/state |
+| `proxy_location` | `ProxyLocation | None` | Route through a residential proxy in a specific country/state |
 | `max_steps` | `int | None` | Step limit (overrides server default) |
 | `wait_for_completion` | `bool` | Block until the task finishes (default `False`) |
-| `timeout` | `float` | Seconds to wait when `wait_for_completion=True` (default 300) |
+| `timeout` | `float` | Seconds to wait when `wait_for_completion=True` (default 1800 — 30 minutes) |
 | `browser_session_id` | `str | None` | Run the task in an existing persistent browser session |
 
 ```python
@@ -172,7 +172,7 @@ await skyvern.run_workflow(
     title: str | None = None,
     webhook_url: str | None = None,
     wait_for_completion: bool = False,
-    timeout: float = 300.0,
+    timeout: float = 1800.0,
     **kwargs,
 ) -> WorkflowRunResponse
 ```
@@ -186,7 +186,7 @@ Triggers a saved workflow run.
 | `title` | `str | None` | Human-readable label for this run |
 | `webhook_url` | `str | None` | URL to POST results to on completion |
 | `wait_for_completion` | `bool` | Block until the workflow finishes |
-| `timeout` | `float` | Seconds to wait (default 300) |
+| `timeout` | `float` | Seconds to wait (default 1800 — 30 minutes) |
 
 ```python
 run = await skyvern.run_workflow(
@@ -227,20 +227,22 @@ Launches a local Chromium browser and returns a `SkyvernBrowser`. Use this to dr
 ```python
 await skyvern.launch_cloud_browser(
     *,
-    timeout: float | None = None,
-    proxy_location: str | None = None,
+    timeout: int | None = None,
+    proxy_location: ProxyLocation | None = None,
 ) -> SkyvernBrowser
 ```
 
 Launches a new browser session on Skyvern Cloud. Cloud-only; requires a cloud API key.
+
+`timeout` is the session lifetime **in minutes** (5–1440). Defaults to 60 minutes when not set.
 
 #### `use_cloud_browser()`
 
 ```python
 await skyvern.use_cloud_browser(
     *,
-    timeout: float | None = None,
-    proxy_location: str | None = None,
+    timeout: int | None = None,
+    proxy_location: ProxyLocation | None = None,
 ) -> SkyvernBrowser
 ```
 
@@ -363,7 +365,7 @@ print(data)  # {"name": "Widget", "price": 29.99, "in_stock": True}
 ```python
 await page.validate(
     prompt: str,
-    model: str | None = None,
+    model: dict | str | None = None,
 ) -> bool
 ```
 
@@ -381,7 +383,7 @@ if not is_logged_in:
 await page.prompt(
     prompt: str,
     schema: dict | None = None,
-    model: str | None = None,
+    model: dict | str | None = None,
 ) -> dict | list | str | None
 ```
 
@@ -400,18 +402,20 @@ await page.click(
     selector: str | None = None,
     *,
     prompt: str | None = None,
-    ai: str = "fallback",
+    ai: str | None = "fallback",
     mode: str | None = None,
     **kwargs,
-) -> None
+) -> str | None
 ```
+
+Returns the selector string that was used to click the element, or `None` if only AI was used.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `selector` | `str | None` | CSS/XPath selector (standard Playwright) |
 | `prompt` | `str | None` | Natural language description of the element to click |
-| `ai` | `str` | AI behavior: `"fallback"` (try selector first, then AI), `"proactive"` (AI directly), `"off"` (no AI) |
-| `mode` | `str | None` | Click mode override |
+| `ai` | `str | None` | AI behavior: `"fallback"` (try selector first, then AI), `"proactive"` (AI directly), `"off"` (no AI) |
+| `mode` | `str | None` | When `"direct"`, performs a raw Playwright click with no AI fallback |
 
 #### `fill()`
 
@@ -421,7 +425,7 @@ await page.fill(
     value: str | None = None,
     *,
     prompt: str | None = None,
-    ai: str = "fallback",
+    ai: str | None = "fallback",
     mode: str | None = None,
     totp_identifier: str | None = None,
     totp_url: str | None = None,
@@ -436,7 +440,7 @@ Fills a form field. Returns the value that was entered (useful when the AI choos
 | `selector` | `str | None` | CSS/XPath selector |
 | `value` | `str | None` | Value to fill in |
 | `prompt` | `str | None` | Natural language description of what/where to fill |
-| `ai` | `str` | AI mode: `"fallback"` or `"proactive"` |
+| `ai` | `str | None` | AI mode: `"fallback"`, `"proactive"`, or `"off"` |
 | `totp_identifier` | `str | None` | TOTP identifier for 2FA fields |
 | `totp_url` | `str | None` | URL to fetch TOTP codes from |
 
@@ -467,8 +471,10 @@ await page.frame_switch(
     selector: str | None = None,
     name: str | None = None,
     index: int | None = None,
-) -> None
+) -> dict
 ```
+
+Returns a dict containing `name`, `url`, `selector`, `frame_name`, and `index` for the switched frame.
 
 Switches the page context to an iframe. Provide exactly one of `selector`, `name`, or `index`.
 
@@ -486,15 +492,21 @@ await page.frame_switch(index=0)
 #### `frame_main()`
 
 ```python
-page.frame_main() -> None
+page.frame_main() -> dict
 ```
 
-Switches back to the main (top-level) frame from within an iframe.
+Synchronous (no `await`). Switches back to the main (top-level) frame from within an iframe. Returns `{"status": "switched_to_main_frame"}`.
 
 #### `frame_list()`
 
 ```python
-frames = await page.frame_list() -> list[dict]
+async def frame_list() -> list[dict]
+```
+
+Usage:
+
+```python
+frames = await page.frame_list()
 ```
 
 Returns a list of all frames in the current page. Each entry has:
@@ -524,7 +536,7 @@ await page.agent.run_task(
     url: str | None = None,
     data_extraction_schema: dict | None = None,
     max_steps: int | None = None,
-    timeout: float = 300.0,
+    timeout: float = 1800.0,
     **kwargs,
 ) -> TaskRunResponse
 ```
@@ -540,7 +552,7 @@ await page.agent.login(
     credential_id: str | None = None,
     url: str | None = None,
     prompt: str | None = None,
-    timeout: float = 300.0,
+    timeout: float = 1800.0,
     **kwargs,
 ) -> WorkflowRunResponse
 ```
@@ -570,8 +582,9 @@ await page.agent.download_files(
     *,
     url: str | None = None,
     download_suffix: str | None = None,
+    download_timeout: float | None = None,
     max_steps_per_run: int | None = None,
-    timeout: float = 300.0,
+    timeout: float = 1800.0,
     **kwargs,
 ) -> WorkflowRunResponse
 ```
@@ -586,7 +599,7 @@ await page.agent.run_workflow(
     parameters: dict | None = None,
     title: str | None = None,
     webhook_url: str | None = None,
-    timeout: float = 300.0,
+    timeout: float = 1800.0,
     **kwargs,
 ) -> WorkflowRunResponse
 ```
@@ -711,21 +724,23 @@ result = asyncio.run(scrape_and_submit())
 
 Pass the `engine` parameter to `run_task()` or `page.agent.run_task()` to choose the agent model.
 
+The SDK default engine is `skyvern-1.0`. Pass `engine=RunEngine.skyvern_v2` explicitly for complex tasks.
+
 | Engine | Best for | Speed | Benchmark | Provider required |
 |---|---|---|---|---|
-| `skyvern-2.0` | Complex multi-page tasks, dynamic UIs | Medium | 85.85% WebVoyager | Configured LLM (default) |
-| `skyvern-1.0` | Simple form fills, single-goal tasks | Fast | — | Configured LLM (default) |
+| `skyvern-1.0` | Simple form fills, single-goal tasks (SDK default) | Fast | — | Configured LLM |
+| `skyvern-2.0` | Complex multi-page tasks, dynamic UIs (recommended) | Medium | 85.85% WebVoyager | Configured LLM |
 | `openai-cua` | Tasks needing OpenAI's computer use | Medium | — | `OPENAI_API_KEY` |
 | `anthropic-cua` | Tasks needing Claude's computer use | Medium | — | `ANTHROPIC_API_KEY` |
 | `ui-tars` | GUI-heavy visual tasks | Medium | — | Doubao API (`VOLCENGINE_API_KEY`) |
 
 ```python
 from skyvern import Skyvern
-from skyvern.enums import RunEngine
+from skyvern.schemas.runs import RunEngine
 
 skyvern = Skyvern(api_key="your-api-key")
 
-# Use skyvern-2.0 for complex tasks (default)
+# Use skyvern-2.0 for complex multi-page tasks
 task = await skyvern.run_task(
     "Find the cheapest round-trip flight from NYC to London in June",
     engine=RunEngine.skyvern_v2,
