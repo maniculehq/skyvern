@@ -41,7 +41,7 @@ The primary AI automation block. Skyvern's LLM agent navigates a website, perfor
 | `data_extraction_goal` | string | No | What data to extract. Extraction runs after navigation finishes. |
 | `data_schema` | object / string | No | JSON Schema describing the shape of the extracted data. |
 | `max_retries` | integer | No | Number of step-level retries on transient failure. |
-| `max_steps_override` | integer | No | Cap the number of browser steps this block may take. |
+| `max_steps_per_run` | integer | No | Cap the number of browser steps this block may take. |
 | `complete_on_download` | boolean | No | Automatically complete when a file download is triggered. |
 | `totp_identifier` | string | No | Correlates this block's TOTP request when multiple concurrent tasks share a TOTP provider. |
 | `totp_verification_url` | string | No | URL Skyvern calls to fetch the TOTP code when 2FA is required. |
@@ -216,7 +216,7 @@ Iterates over a list (from a parameter or a previous block's output), executing 
 | `loop_over_parameter_key` | string | Yes | Parameter key holding the list to iterate over. |
 | `loop_blocks` | array | Yes | Blocks to execute for each loop item. |
 | `continue_on_failure` | boolean | No | If `true`, continue with the next iteration when a loop body block fails. |
-| `complete_if_empty` | boolean | No | Complete successfully (instead of failing) when the loop list is empty. Default: `true`. |
+| `complete_if_empty` | boolean | No | Complete successfully (instead of failing) when the loop list is empty. Default: `false`. |
 | `max_concurrency` | integer | No | Run up to this many iterations in parallel (1–20). Default: `1` (sequential). |
 
 Inside `loop_blocks`, reference the current item via `{{ current_item }}` and the current index via `{{ current_index }}`.
@@ -248,15 +248,26 @@ Routes execution to different branches based on ordered conditions. The first co
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `branch_conditions` | array of BranchCondition | Yes | Ordered list of conditions. Each has `criteria` (Jinja2 or natural language) and `next_block_label`. One may be marked as the default fallthrough. |
+| `branch_conditions` | array of BranchCondition | Yes | Ordered list of conditions. Each condition has a `criteria` object (`criteria_type` + `expression`) and a `next_block_label`. One branch may be marked `is_default: true` as the fallthrough. |
+
+Each `criteria` object:
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `criteria_type` | `jinja2_template` \| `prompt` | Evaluation mode. Use `jinja2_template` for expressions; `prompt` for natural-language conditions. |
+| `expression` | string | The Jinja2 expression or natural-language description to evaluate. |
 
 ```yaml
 - block_type: conditional
   label: check_result
   branch_conditions:
-    - criteria: "{{ extract_price_output.price | float < 10.0 }}"
+    - criteria:
+        criteria_type: jinja2_template
+        expression: "{{ extract_price_output.price | float < 10.0 }}"
       next_block_label: send_low_price_alert
-    - criteria: "{{ extract_price_output.price | float >= 10.0 }}"
+    - criteria:
+        criteria_type: jinja2_template
+        expression: "{{ extract_price_output.price | float >= 10.0 }}"
       next_block_label: send_high_price_alert
     - is_default: true
       next_block_label: log_unknown_price
@@ -270,14 +281,14 @@ Pauses the workflow and waits for a human to approve or reject before continuing
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `instructions` | string | Yes | Message shown to the human reviewer. |
+| `instructions` | string | No | Message shown to the human reviewer. Default: `"Please review and approve or reject to continue the workflow."`. |
 | `positive_descriptor` | string | No | Label for the approval action. Default: `"Approve"`. |
 | `negative_descriptor` | string | No | Label for the rejection action. Default: `"Reject"`. |
-| `timeout_seconds` | integer | No | Time to wait for a response. Default: 7200 (2 hours). On timeout, the workflow terminates. |
-| `sender` | string | No | Sender address for the notification email. |
-| `recipients` | array | No | Email addresses to notify when approval is needed. |
-| `subject` | string | No | Email subject. |
-| `body` | string | No | Email body. |
+| `timeout_seconds` | integer | Yes | Time to wait for a response (seconds). On timeout, the workflow terminates. |
+| `sender` | string | Yes | Sender address for the notification email. |
+| `recipients` | array | Yes | Email addresses to notify when approval is needed. |
+| `subject` | string | Yes | Email subject. |
+| `body` | string | Yes | Email body. |
 
 ```yaml
 - block_type: human_interaction
@@ -285,9 +296,11 @@ Pauses the workflow and waits for a human to approve or reject before continuing
   instructions: >-
     The agent found a matching item at ${{ price_output.price }}.
     Approve to complete the purchase or reject to cancel.
+  sender: automation@example.com
   recipients:
     - manager@example.com
   subject: "Purchase approval needed — ${{ price_output.price }}"
+  body: "Please review and approve or reject the pending purchase."
   timeout_seconds: 3600
 ```
 
