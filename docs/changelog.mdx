@@ -7,6 +7,11 @@ mode: custom
 <div className="cl-page">
   <div className="cl-sidebar">
     <p className="cl-sidebar-title">TIMELINE</p>
+    <a href="#v1-0-29-—-april-2%2C-2026" className="cl-sidebar-link">v1.0.29 — Apr 2, 2026</a>
+    <a href="#v1-0-28-—-march-25%2C-2026" className="cl-sidebar-link">v1.0.28 — Mar 25, 2026</a>
+    <a href="#v1-0-27-—-march-25%2C-2026" className="cl-sidebar-link">v1.0.27 — Mar 25, 2026</a>
+    <a href="#v1-0-26-—-march-24%2C-2026" className="cl-sidebar-link">v1.0.26 — Mar 24, 2026</a>
+    <a href="#v1-0-24-—-march-12%2C-2026" className="cl-sidebar-link">v1.0.24 — Mar 12, 2026</a>
     <a href="#v1-0-22-—-february-26%2C-2026" className="cl-sidebar-link">v1.0.22 — Feb 26, 2026</a>
     <a href="#v1-0-21-—-february-24%2C-2026" className="cl-sidebar-link">v1.0.21 — Feb 24, 2026</a>
     <a href="#v1-0-18-—-february-19%2C-2026" className="cl-sidebar-link">v1.0.18 — Feb 19, 2026</a>
@@ -18,6 +23,136 @@ mode: custom
   <div className="cl-content">
     <h1 className="cl-title">Changelog</h1>
     <p className="cl-subtitle">New features, improvements, and fixes in Skyvern</p>
+
+<Update label="v1.0.29 — April 2, 2026" description="SQLite-first server mode, parallel loops, webhook trigger, and more">
+
+## New features
+
+- **SQLite-first server mode** — `skyvern run server` now works out-of-the-box with zero configuration, using SQLite by default. No PostgreSQL setup required for local development or self-hosting. ([#5302](https://github.com/Skyvern-AI/skyvern/pull/5302))
+
+- **Parallel For-Loop Execution** — For-loop blocks can now execute iterations in parallel rather than sequentially, with configurable concurrency limits. Dramatically reduces runtime for data-heavy workflows. ([#5412](https://github.com/Skyvern-AI/skyvern/pull/5412))
+
+- **Webhook Trigger Endpoint** — New `POST /v1/workflows/{permanent_id}/trigger` endpoint triggers a workflow run via HTTP webhook, making it easy to kick off automations from external systems. ([#5292](https://github.com/Skyvern-AI/skyvern/pull/5292))
+
+- **Multi-Tab Browser Management in MCP** — MCP clients can now open, switch between, and close browser tabs during an automation session. ([#5313](https://github.com/Skyvern-AI/skyvern/pull/5313))
+
+- **iframe Support for SDK, CLI, and MCP** — Skyvern can now interact with content inside iframes, a common pattern on legacy enterprise portals and embedded widgets. ([#5319](https://github.com/Skyvern-AI/skyvern/pull/5319))
+
+- **Network Request Interception for MCP/CLI** — MCP and CLI tools can now capture request/response bodies, intercept routes, and inspect network traffic during automation runs. ([#5370](https://github.com/Skyvern-AI/skyvern/pull/5370))
+
+- **MCP Batch Observe/Execute Tools** — New batch tools let MCP clients observe page state and queue multiple actions in a single round-trip, improving agent loop efficiency. ([#5386](https://github.com/Skyvern-AI/skyvern/pull/5386))
+
+- **Clipboard Read/Write MCP Tools** — MCP clients can now read from and write to the system clipboard. ([#5365](https://github.com/Skyvern-AI/skyvern/pull/5365))
+
+- **NAT Egress Proxy for Webhook Delivery** — Webhook callbacks are now sent from static IP addresses, making it easier to whitelist Skyvern in firewall rules. ([#5392](https://github.com/Skyvern-AI/skyvern/pull/5392))
+
+- **Stealth Chromium Browser Sessions** — Browser sessions can now use a stealth-hardened Chromium build to reduce bot-detection fingerprinting. ([#5329](https://github.com/Skyvern-AI/skyvern/pull/5329))
+
+- **Parameter Autocomplete in Workflow Blocks** — Workflow text blocks now autocomplete parameter names as you type `{{`, surfacing available parameters and upstream block outputs. ([#5293](https://github.com/Skyvern-AI/skyvern/pull/5293))
+
+- **Duration Column in Past Runs** — The per-workflow Past Runs table now shows run duration alongside status and timestamps. ([#5419](https://github.com/Skyvern-AI/skyvern/pull/5419))
+
+- **Schedule Endpoints in OpenAPI** — Schedule management endpoints are now included in the OpenAPI specification and generated SDKs. ([#5408](https://github.com/Skyvern-AI/skyvern/pull/5408))
+
+- **/smoke-test Skill** — New built-in skill that runs a smoke test against a target URL using Skyvern, suitable for CI/CD quality gates. ([#5317](https://github.com/Skyvern-AI/skyvern/pull/5317))
+
+## Improvements
+
+- MCP observe/execute batch tools with AI speed optimizations. ([#5386](https://github.com/Skyvern-AI/skyvern/pull/5386))
+- Retry selector lookup before falling back to AI in cached scripts. ([#5385](https://github.com/Skyvern-AI/skyvern/pull/5385))
+- Page URL now included in agent action summaries for the script reviewer. ([#5384](https://github.com/Skyvern-AI/skyvern/pull/5384))
+- `run_with` field is now returned in `GET /v1/runs/{id}` responses. ([#5380](https://github.com/Skyvern-AI/skyvern/pull/5380))
+
+## Bug fixes
+
+- WorkflowTriggerBlock now works correctly in cached scripts. ([#5320](https://github.com/Skyvern-AI/skyvern/pull/5320))
+- MCP workflow updates no longer wipe credential parameters. ([#5398](https://github.com/Skyvern-AI/skyvern/pull/5398))
+- Credential block references are preserved during MCP workflow updates. ([#5344](https://github.com/Skyvern-AI/skyvern/pull/5344))
+- Default login prompt applied to MCP-created login blocks. ([#5342](https://github.com/Skyvern-AI/skyvern/pull/5342))
+- File download blocks inside for-loops are now correctly cached. ([#5323](https://github.com/Skyvern-AI/skyvern/pull/5323))
+- Nested for-loop script block persistence fixed. ([#5404](https://github.com/Skyvern-AI/skyvern/pull/5404))
+- ISO datetime strings preserved in workflow YAML loading. ([#5421](https://github.com/Skyvern-AI/skyvern/pull/5421))
+- TextPromptBlock error handling improved with better LLM diagnostics. ([#5333](https://github.com/Skyvern-AI/skyvern/pull/5333))
+
+</Update>
+
+<Update label="v1.0.28 — March 25, 2026" description="Custom Credential Service and MCP caching tools">
+
+## New features
+
+- **Custom Credential Service** — Configure a custom external credential provider in cloud settings. Skyvern will call your service to fetch credentials at runtime, enabling integration with internal secret stores. ([#5240](https://github.com/Skyvern-AI/skyvern/pull/5240))
+
+- **MCP Script and Caching Tools** — MCP clients can now inspect cached scripts, trigger script regeneration, and control the code-vs-AI execution mode from within MCP tool calls. ([#5243](https://github.com/Skyvern-AI/skyvern/pull/5243))
+
+</Update>
+
+<Update label="v1.0.27 — March 25, 2026" description="MCP Playwright parity: inspection tools, drag, and file upload">
+
+## New features
+
+- **MCP Inspection Tools** — MCP clients now have access to browser console logs, network request details, and dialog state — the first release in the Playwright parity series. ([#5225](https://github.com/Skyvern-AI/skyvern/pull/5225))
+
+- **MCP Drag, File Upload, and Evaluate Async** — MCP clients can now perform drag-and-drop interactions, upload files to browser inputs, and evaluate asynchronous JavaScript expressions. ([#5229](https://github.com/Skyvern-AI/skyvern/pull/5229))
+
+</Update>
+
+<Update label="v1.0.26 — March 24, 2026" description="Improved CAPTCHA solving, Print Page artifact URL, conditional block improvements">
+
+## New features
+
+- **Print Page Block Downloadable Output** — The `print_page` block now returns an `artifact_url` field in its output, making the saved PDF directly downloadable. ([#5217](https://github.com/Skyvern-AI/skyvern/pull/5217))
+
+- **Improved CAPTCHA Solving** — Skyvern now proactively detects reCAPTCHA and hCaptcha before they fully render, improving solve rates on sites that load challenges lazily. ([#5171](https://github.com/Skyvern-AI/skyvern/pull/5171))
+
+- **Credential Testing with Live View** — The credential testing panel now shows a live view link so you can watch the browser in real-time while testing a saved login. ([#5175](https://github.com/Skyvern-AI/skyvern/pull/5175))
+
+- **Multiline Conditional Block Expressions** — Conditional block expressions in the workflow editor now support multiline text, making complex Jinja2 expressions easier to read and edit. ([#5208](https://github.com/Skyvern-AI/skyvern/pull/5208))
+
+## Improvements
+
+- Add New Credential option moved to the top of credential selector dropdowns for quicker access. ([#5206](https://github.com/Skyvern-AI/skyvern/pull/5206))
+- Rich action data from AI fallback episodes is now available to the script reviewer. ([#5218](https://github.com/Skyvern-AI/skyvern/pull/5218))
+- Login test prompt strengthened with no max_steps cap. ([#5181](https://github.com/Skyvern-AI/skyvern/pull/5181))
+
+## Bug fixes
+
+- Parameter order is now kept consistent across run UI refreshes. ([#5207](https://github.com/Skyvern-AI/skyvern/pull/5207))
+- For-loop script generation now uses the correct `loop_over` parameter key. ([#5173](https://github.com/Skyvern-AI/skyvern/pull/5173))
+- Conditional prompt consistency improved for Jinja + natural language branches. ([#5172](https://github.com/Skyvern-AI/skyvern/pull/5172))
+
+</Update>
+
+<Update label="v1.0.24 — March 12, 2026" description="Workflow folders, user context for credentials, browser pane highlight">
+
+## New features
+
+- **Workflow Folders** — Organize workflows into folders via the API, SDK, MCP, and UI. Folders support nesting and can be used to group related automations. ([#5075](https://github.com/Skyvern-AI/skyvern/pull/5075))
+
+- **User Context on Credentials** — Credentials can now store a `user_context` field that is passed to login tests, enabling context-aware credential validation. ([#5079](https://github.com/Skyvern-AI/skyvern/pull/5079), [#5081](https://github.com/Skyvern-AI/skyvern/pull/5081))
+
+- **Dynamic Download Selectors in For-Loops** — File download blocks inside for-loops now generate dynamic selectors that adapt to the current iteration value, enabling per-row file downloads in data processing workflows. ([#5077](https://github.com/Skyvern-AI/skyvern/pull/5077))
+
+- **Browser Pane Highlight During Block Runs** — The live browser view now highlights the browser pane with a colored outline while a block is actively executing, making it easier to track progress. ([#5055](https://github.com/Skyvern-AI/skyvern/pull/5055))
+
+- **MCP API Key Switcher** — Local MCP clients can now switch between multiple API keys without restarting the server. ([#5060](https://github.com/Skyvern-AI/skyvern/pull/5060))
+
+- **Backend Workflow Validation** — Workflow create and update operations now validate the workflow definition on the backend, returning clear field-level errors (HTTP 422) instead of silently accepting invalid definitions. ([#5076](https://github.com/Skyvern-AI/skyvern/pull/5076))
+
+## Improvements
+
+- Default proxy for MCP-created workflows is now Residential. ([#5080](https://github.com/Skyvern-AI/skyvern/pull/5080))
+- MCP workflow status responses compacted and optimized. ([#5084](https://github.com/Skyvern-AI/skyvern/pull/5084))
+- Workflows with Adaptive Caching enabled now default to Code 2.0 mode. ([#5057](https://github.com/Skyvern-AI/skyvern/pull/5057))
+- Run mode is now preserved when re-running a workflow. ([#5053](https://github.com/Skyvern-AI/skyvern/pull/5053))
+
+## Bug fixes
+
+- Loop block iteration display no longer shows null or duplicate entries during streaming. ([#5049](https://github.com/Skyvern-AI/skyvern/pull/5049))
+- New script versions are now correctly picked up by parallel workers. ([#5069](https://github.com/Skyvern-AI/skyvern/pull/5069))
+- Workflow-level `run_with=agent` is now respected in should_run_script check. ([#5067](https://github.com/Skyvern-AI/skyvern/pull/5067))
+- Static click actions inside for-loops are now correctly patched in generated scripts. ([#5052](https://github.com/Skyvern-AI/skyvern/pull/5052))
+
+</Update>
 
 <Update label="v1.0.22 — February 26, 2026" description="Adaptive caching, Workflow Trigger block, CLI signup, and more">
 

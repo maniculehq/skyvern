@@ -16,6 +16,30 @@ Requires Python 3.11+. If you hit version errors, use `pipx install skyvern` to 
 
 ---
 
+## Which SDK surface should I use?
+
+Skyvern exposes three distinct Python SDK surfaces and one TypeScript SDK. Use this table to pick the right one for your use case:
+
+| Surface | Import | Best for |
+|---------|--------|----------|
+| **REST client** (`skyvern.client`) | `from skyvern.client import Skyvern` | Integrating Skyvern Cloud into any Python application. Wraps all REST endpoints in typed async methods. Auto-generated from the OpenAPI spec. |
+| **Library SDK** (`skyvern.library`) | `from skyvern import Skyvern` | Playwright-style embedded automation. Boots Skyvern locally (`Skyvern.local()`) or connects to Cloud. Supports `page.goto()`, `page.agent.run_task()`, and direct browser control. |
+| **Script functions** (`skyvern` top-level) | `from skyvern import run_task, extract, loop, ...` | Writing `@workflow`-decorated scripts. These async functions map directly to workflow blocks and are used inside the Adaptive Caching scripting layer. |
+| **TypeScript SDK** (`@skyvern/client`) | `import { SkyvernClient } from "@skyvern/client"` | Node.js, Vercel, Cloudflare Workers, Deno, or Bun applications. Mirrors the Python REST client API surface. |
+
+### Decision guide
+
+```
+Do you need browser automation (clicks, forms, downloads)?
+├── Yes, in Python with Playwright-style page control → skyvern.library (Skyvern.local() or Skyvern(api_key=...))
+├── Yes, inside a @workflow script using block functions → skyvern top-level (run_task, extract, loop, ...)
+└── No, I just need to trigger runs and read results via REST:
+    ├── Python → skyvern.client (Skyvern)
+    └── TypeScript/JS → @skyvern/client (SkyvernClient)
+```
+
+---
+
 ## Initialize the client
 
 The `Skyvern` class is async — all methods are coroutines. Wrap calls in an `async` function and use `asyncio.run()` as the entry point:

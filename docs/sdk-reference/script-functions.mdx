@@ -1,0 +1,695 @@
+---
+title: Script Functions
+subtitle: High-level async functions for building automations inside @workflow scripts
+slug: sdk-reference/script-functions
+---
+
+Script functions are the building blocks for automations written with the `@workflow` decorator. Each function maps directly to a workflow block and can be `await`-ed inside an `async` script body.
+
+Import them from the top-level `skyvern` package:
+
+```python
+from skyvern import (
+    action, extract, login, run_task,
+    download, goto, http_request,
+    conditional, loop, prompt,
+    validate, wait, run_code,
+    parse_file, parse_pdf,
+    send_email, upload_file,
+    render_template, render_list,
+)
+```
+
+<Note>
+Script functions must be called inside an `async` function decorated with `@workflow`. They rely on Skyvern's internal run context and will raise exceptions if called outside a running workflow.
+</Note>
+
+---
+
+## run_task
+
+Run a navigation task. The AI agent browses to `url` and takes actions until the `prompt` goal is met.
+
+```python
+async def run_task(
+    prompt: str,
+    url: str | None = None,
+    max_steps: int | None = None,
+    download_suffix: str | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    engine: RunEngine = RunEngine.skyvern_v1,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> dict | list | str | None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | **Required.** Natural language navigation goal. Include COMPLETE/TERMINATE instructions. |
+| `url` | `str` | `None` | Starting URL. If omitted, continues from the current page. |
+| `max_steps` | `int` | `None` | Maximum AI steps allowed. |
+| `download_suffix` | `str` | `None` | Filename for any file downloaded during the task. |
+| `totp_identifier` | `str` | `None` | TOTP credential identifier for 2FA. |
+| `totp_url` | `str` | `None` | URL to fetch TOTP codes from. |
+| `label` | `str` | `None` | Block label for output references and caching. |
+| `cache_key` | `str` | `None` | Key for the `@cached` script cache. Defaults to `label`. |
+| `error_code_mapping` | `dict` | `None` | Map custom error codes to descriptions. |
+
+<CodeGroup>
+```python Python
+from skyvern import run_task
+
+result = await run_task(
+    prompt="Search for 'AI browser automation' and COMPLETE when results are shown.",
+    url="https://www.google.com",
+    max_steps=10,
+    label="search_google",
+)
+```
+</CodeGroup>
+
+---
+
+## action
+
+Take a single browser action using the AI agent. Unlike `run_task`, this is intended for precise single actions (one click, one fill) rather than multi-step navigation.
+
+```python
+async def action(
+    prompt: str,
+    url: str | None = None,
+    max_steps: int | None = None,
+    download_suffix: str | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | **Required.** Description of the single action to take. |
+| `url` | `str` | `None` | URL to navigate to before the action. |
+| `label` | `str` | `None` | Block label for caching. |
+
+<CodeGroup>
+```python Python
+from skyvern import action
+
+await action(
+    prompt='Click the "Download PDF" button',
+    label="click_download",
+)
+```
+</CodeGroup>
+
+---
+
+## extract
+
+Extract structured data from the current page using the AI agent.
+
+```python
+async def extract(
+    prompt: str,
+    schema: dict | list | str | None = None,
+    url: str | None = None,
+    max_steps: int | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+) -> dict | list | str | None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | **Required.** Description of what data to extract. |
+| `schema` | `dict \| list \| str` | `None` | JSON Schema for the output structure. |
+| `url` | `str` | `None` | URL to navigate to before extracting. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import extract
+
+data = await extract(
+    prompt="Extract the order total, date, and item list from this page.",
+    schema={
+        "type": "object",
+        "properties": {
+            "order_total": {"type": "number"},
+            "order_date": {"type": "string"},
+            "items": {"type": "array", "items": {"type": "string"}},
+        }
+    },
+    label="extract_order",
+)
+print(data["order_total"])
+```
+</CodeGroup>
+
+---
+
+## login
+
+Authenticate to a website using stored credentials.
+
+```python
+async def login(
+    prompt: str,
+    url: str | None = None,
+    max_steps: int | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | **Required.** Login instructions. Include COMPLETE/TERMINATE criteria. |
+| `url` | `str` | `None` | Login page URL. |
+| `totp_identifier` | `str` | `None` | TOTP credential identifier for 2FA. |
+| `totp_url` | `str` | `None` | URL to fetch TOTP codes from. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import login
+
+await login(
+    prompt="Log in with the provided credentials. COMPLETE when on the dashboard.",
+    url="https://app.example.com/login",
+    label="login_block",
+)
+```
+</CodeGroup>
+
+---
+
+## download
+
+Navigate to download a file from a website.
+
+```python
+async def download(
+    prompt: str,
+    url: str | None = None,
+    complete_on_download: bool = True,
+    download_suffix: str | None = None,
+    max_steps: int | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    label: str | None = None,
+    cache_key: str | None = None,
+    model: dict | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | **Required.** Instructions for finding and downloading the file. |
+| `url` | `str` | `None` | Starting URL. |
+| `complete_on_download` | `bool` | `True` | Mark block complete when download begins. |
+| `download_suffix` | `str` | `None` | Filename for the downloaded file. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import download
+
+await download(
+    prompt="Find and download the annual report PDF.",
+    url="https://investor.example.com/reports",
+    download_suffix="annual_report_2025",
+    label="download_report",
+)
+```
+</CodeGroup>
+
+---
+
+## goto
+
+Navigate directly to a URL without any AI processing.
+
+```python
+async def goto(
+    url: str,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | `str` | — | **Required.** Target URL. Supports Jinja2 templates. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import goto
+
+await goto("https://app.example.com/dashboard", label="go_dashboard")
+```
+</CodeGroup>
+
+---
+
+## http_request
+
+Make an HTTP API call.
+
+```python
+async def http_request(
+    method: str,
+    url: str,
+    headers: dict[str, str] | None = None,
+    body: dict | None = None,
+    timeout: int = 30,
+    follow_redirects: bool = True,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `method` | `str` | — | **Required.** HTTP method: `GET`, `POST`, `PUT`, `DELETE`, etc. |
+| `url` | `str` | — | **Required.** Target URL. |
+| `headers` | `dict` | `None` | HTTP headers. |
+| `body` | `dict` | `None` | Request body (for POST/PUT). |
+| `timeout` | `int` | `30` | Request timeout in seconds. |
+| `follow_redirects` | `bool` | `True` | Follow HTTP redirects. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import http_request
+
+await http_request(
+    method="POST",
+    url="https://api.example.com/notify",
+    headers={"Authorization": "Bearer {{api_token}}"},
+    body={"status": "completed", "data": "{{extract_order_output}}"},
+    label="notify_api",
+)
+```
+</CodeGroup>
+
+---
+
+## conditional
+
+Evaluate a conditional block using a cached Python function (registered via `@cached`). Returns branch metadata including `next_block_label`.
+
+```python
+async def conditional(label: str) -> dict
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `label` | `str` | — | **Required.** Label matching the `@cached` key for the branch function. |
+
+The cached function must return `{"next_block_label": "...", "branch_index": N}`.
+
+<CodeGroup>
+```python Python
+from skyvern import cached, conditional
+
+@cached("check_status")
+async def check_status_fn(page, context):
+    status = context.parameters.get("extract_status_output", {}).get("status")
+    if status == "approved":
+        return {"next_block_label": "process_approved", "branch_index": 0}
+    return {"next_block_label": "handle_rejection", "branch_index": 1}
+
+# In the workflow body:
+branch = await conditional("check_status")
+```
+</CodeGroup>
+
+---
+
+## loop
+
+Iterate over a list of values, yielding a `SkyvernLoopItem` for each iteration.
+
+```python
+async def loop(
+    values: list | str,
+    complete_if_empty: bool = False,
+    label: str | None = None,
+) -> AsyncGenerator[SkyvernLoopItem, None]
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `values` | `list \| str` | — | **Required.** List to iterate over, or a parameter key reference (string) to resolve at runtime. |
+| `complete_if_empty` | `bool` | `False` | Complete successfully if the list is empty. |
+| `label` | `str` | `None` | Block label. |
+
+Each yielded `SkyvernLoopItem` has:
+- `item.current_value` — the current iteration value
+- `item.current_index` — the zero-based iteration index
+- `item.current_item` — alias for `current_value`
+
+<CodeGroup>
+```python Python
+from skyvern import loop, run_task
+
+async for item in loop(["https://job1.com", "https://job2.com"], label="job_loop"):
+    await run_task(
+        prompt="Fill and submit the job application form.",
+        url=item.current_value,
+        label="submit_application",
+    )
+```
+</CodeGroup>
+
+---
+
+## prompt
+
+Send a prompt to an LLM and return the response. Useful for text generation, classification, or analysis without browser interaction.
+
+```python
+async def prompt(
+    prompt: str,
+    schema: dict | None = None,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+    model: dict | None = None,
+) -> dict | list | str | None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prompt` | `str` | — | **Required.** The prompt text. Supports Jinja2 templates. |
+| `schema` | `dict` | `None` | JSON Schema for structured output. |
+| `label` | `str` | `None` | Block label. |
+| `model` | `dict` | `None` | Model override configuration. |
+
+<CodeGroup>
+```python Python
+from skyvern import prompt
+
+summary = await prompt(
+    prompt="Summarize the following data and flag any anomalies: {{extract_data_output}}",
+    schema={
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "anomalies": {"type": "array", "items": {"type": "string"}},
+        }
+    },
+    label="summarize_data",
+)
+print(summary["summary"])
+```
+</CodeGroup>
+
+---
+
+## validate
+
+Assert conditions using the LLM. Raises a termination exception if `terminate_criterion` is met.
+
+```python
+async def validate(
+    complete_criterion: str | None = None,
+    terminate_criterion: str | None = None,
+    error_code_mapping: dict[str, str] | None = None,
+    label: str | None = None,
+    model: dict | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `complete_criterion` | `str` | `None` | Condition to continue. At least one of `complete_criterion` or `terminate_criterion` is required. |
+| `terminate_criterion` | `str` | `None` | Condition that terminates the workflow. |
+| `error_code_mapping` | `dict` | `None` | Map custom error codes to descriptions. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import validate
+
+await validate(
+    complete_criterion="The page shows a confirmation message indicating the form was submitted.",
+    terminate_criterion="The page shows an error or the session has expired.",
+    label="check_submission",
+)
+```
+</CodeGroup>
+
+---
+
+## wait
+
+Pause execution for a number of seconds.
+
+```python
+async def wait(seconds: int, label: str | None = None) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `seconds` | `int` | — | **Required.** Number of seconds to wait. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import wait
+
+await wait(30, label="cooling_period")
+```
+</CodeGroup>
+
+---
+
+## run_code
+
+Execute a Python code snippet. The `result` variable set inside the code is returned.
+
+```python
+async def run_code(
+    code: str,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> dict
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `code` | `str` | — | **Required.** Python code to execute. Set `result` to return a value. |
+| `label` | `str` | `None` | Block label. |
+| `parameters` | `list[str]` | `None` | Parameter keys to make available. |
+
+<CodeGroup>
+```python Python
+from skyvern import run_code
+
+output = await run_code(
+    code="result = {'total': sum(prices)}",
+    parameters=["prices"],
+    label="sum_prices",
+)
+```
+</CodeGroup>
+
+---
+
+## parse_pdf
+
+Parse a PDF file and extract its content.
+
+```python
+async def parse_pdf(
+    file_url: str,
+    schema: dict | None = None,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file_url` | `str` | — | **Required.** URL of the PDF to parse. Supports Jinja2 templates. |
+| `schema` | `dict` | `None` | JSON Schema for structured extraction. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import parse_pdf
+
+await parse_pdf(
+    file_url="{{download_report_output}}",
+    schema={"type": "object", "properties": {"revenue": {"type": "number"}}},
+    label="parse_report",
+)
+```
+</CodeGroup>
+
+---
+
+## parse_file
+
+Parse a CSV, Excel, or PDF file from a URL.
+
+```python
+async def parse_file(
+    file_url: str,
+    file_type: str,          # "csv" | "excel" | "pdf"
+    schema: dict | None = None,
+    label: str | None = None,
+    parameters: list[str] | None = None,
+    model: dict | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file_url` | `str` | — | **Required.** URL of the file. |
+| `file_type` | `str` | — | **Required.** `"csv"`, `"excel"`, or `"pdf"`. |
+| `schema` | `dict` | `None` | JSON Schema for structured output. |
+| `label` | `str` | `None` | Block label. |
+
+---
+
+## send_email
+
+Send an email with optional file attachments.
+
+```python
+async def send_email(
+    sender: str,
+    recipients: list[str] | str,
+    subject: str,
+    body: str,
+    file_attachments: list[str] = [],
+    label: str | None = None,
+    parameters: list[str] | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sender` | `str` | — | **Required.** Sender email address. |
+| `recipients` | `list[str] \| str` | — | **Required.** Recipient(s). |
+| `subject` | `str` | — | **Required.** Email subject. |
+| `body` | `str` | — | **Required.** Email body. |
+| `file_attachments` | `list[str]` | `[]` | File paths to attach. Use `SKYVERN_DOWNLOAD_DIRECTORY` for downloaded files. |
+
+<Note>
+SMTP parameters (`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`) must be defined as workflow parameters.
+</Note>
+
+---
+
+## upload_file
+
+Upload downloaded files to AWS S3 or Azure Blob Storage.
+
+```python
+async def upload_file(
+    label: str | None = None,
+    parameters: list[str] | None = None,
+    storage_type: str = "s3",
+    s3_bucket: str | None = None,
+    aws_access_key_id: str | None = None,
+    aws_secret_access_key: str | None = None,
+    region_name: str | None = None,
+    azure_storage_account_name: str | None = None,
+    azure_storage_account_key: str | None = None,
+    azure_blob_container_name: str | None = None,
+    path: str | None = None,
+) -> None
+```
+
+---
+
+## render_template
+
+Render a Jinja2 template string with workflow context and parameters.
+
+```python
+def render_template(template: str, data: dict | None = None) -> str
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `template` | `str` | — | **Required.** Jinja2 template string. |
+| `data` | `dict` | `None` | Additional data to inject into the template context. |
+
+<CodeGroup>
+```python Python
+from skyvern import render_template
+
+message = render_template("Hello {{first_name}}, your order {{order_id}} is ready.")
+```
+</CodeGroup>
+
+---
+
+## render_list
+
+Render a Jinja2 template and parse the result as a Python list.
+
+```python
+def render_list(template: str, data: dict | None = None) -> list[str]
+```
+
+<CodeGroup>
+```python Python
+from skyvern import render_list
+
+emails = render_list("{{recipient_emails}}")  # resolves workflow parameter to a list
+```
+</CodeGroup>
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Adaptive Caching"
+    icon="bolt"
+    href="/sdk-reference/caching"
+  >
+    Speed up workflows with @cached scripts
+  </Card>
+  <Card
+    title="Workflows"
+    icon="diagram-project"
+    href="/sdk-reference/workflows"
+  >
+    Define and run multi-step automations
+  </Card>
+  <Card
+    title="Workflow Blocks Reference"
+    icon="cube"
+    href="/multi-step-automations/workflow-blocks-reference"
+  >
+    The JSON/YAML equivalents of these functions
+  </Card>
+  <Card
+    title="Complete Reference"
+    icon="book"
+    href="/sdk-reference/complete-reference"
+  >
+    Full API reference for all SDK methods
+  </Card>
+</CardGroup>

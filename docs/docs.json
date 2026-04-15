@@ -241,6 +241,13 @@
                   "sdk-reference/error-handling",
                   "sdk-reference/complete-reference"
                 ]
+              },
+              {
+                "group": "Script API",
+                "pages": [
+                  "sdk-reference/script-functions",
+                  "sdk-reference/caching"
+                ]
               }
             ]
           },

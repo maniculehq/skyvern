@@ -1,0 +1,208 @@
+---
+title: Adaptive Caching
+subtitle: Speed up repeated workflow runs with @cached scripts
+slug: sdk-reference/caching
+---
+
+Adaptive Caching learns from successful AI-driven runs and generates cached Python functions that replace AI calls on future runs. When a cached function fails (e.g., a website layout changed), Skyvern automatically falls back to the AI agent and regenerates a new cached version.
+
+This feature was introduced in v1.0.22 and is available for `navigation`, `action`, `extraction`, `login`, `file_download`, and other browser-interaction blocks.
+
+---
+
+## How it works
+
+1. **First run** — Skyvern uses the AI agent to complete each block. On success, it records the actions as a cached Python function.
+2. **Subsequent runs** — Skyvern tries the cached function first. If it succeeds, no AI call is made — the run is faster and cheaper.
+3. **Cache miss / failure** — If the cached function raises an exception (e.g., a selector is stale), Skyvern falls back to the AI agent, completes the block, and regenerates a fresh cached function.
+
+This "record and replay" pattern is transparent: you do not need to change your workflow definition. Adaptive Caching is enabled by default for all applicable block types.
+
+---
+
+## @workflow decorator
+
+The `@workflow` decorator marks the entry-point function of a Skyvern script. It is required when writing a script that will be executed via `skyvern run` or the Scripts API.
+
+```python
+from skyvern import workflow
+
+@workflow(
+    title: str | None = None,
+    totp_url: str | None = None,
+    totp_identifier: str | None = None,
+    webhook_url: str | None = None,
+    max_steps: int | None = None,
+)
+def my_workflow(parameters: dict):
+    ...
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `title` | `str` | `None` | Display name for this workflow. |
+| `totp_url` | `str` | `None` | URL to fetch TOTP codes for 2FA. |
+| `totp_identifier` | `str` | `None` | TOTP credential identifier. |
+| `webhook_url` | `str` | `None` | Webhook URL for run completion notifications. |
+| `max_steps` | `int` | `None` | Maximum total AI steps for the entire script run. |
+
+<CodeGroup>
+```python Python
+from skyvern import workflow, run_task
+
+@workflow(title="Search and Extract")
+async def run_workflow(parameters: dict):
+    result = await run_task(
+        prompt="Search for the product and COMPLETE when results appear.",
+        url="https://example.com",
+        label="search_task",
+    )
+    return result
+```
+</CodeGroup>
+
+---
+
+## @cached decorator
+
+The `@cached` decorator registers a Python function as the cached implementation for a specific workflow block. The `cache_key` must match the `label` of the block it replaces.
+
+```python
+from skyvern import cached
+
+@cached(cache_key: str)
+async def my_function(page: SkyvernPage, context: RunContext) -> Any:
+    ...
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cache_key` | `str` | **Required.** The block `label` this function caches. |
+
+The decorated function receives:
+- `page: SkyvernPage` — A Playwright-compatible page object for browser interaction.
+- `context: RunContext` — The current run context with access to workflow parameters.
+
+<Note>
+Cached functions are generated automatically by Skyvern after successful AI runs. You generally do not need to write them by hand. They appear in the Scripts section of the Skyvern UI and can be reviewed, edited, or reset there.
+</Note>
+
+<CodeGroup>
+```python Python
+from skyvern import cached, workflow, run_task
+from skyvern import SkyvernPage, RunContext
+
+# Manually written cached function for the "click_download" block.
+# This runs instead of the AI agent when the cache is warm.
+@cached("click_download")
+async def click_download_fn(page: SkyvernPage, context: RunContext):
+    await page.click("#download-btn")
+
+@workflow(title="Download Report")
+async def run_workflow(parameters: dict):
+    # The label matches the @cached key above.
+    await run_task(
+        prompt='Click the "Download" button.',
+        label="click_download",
+    )
+```
+</CodeGroup>
+
+---
+
+## SkyvernPage
+
+`SkyvernPage` wraps a Playwright `Page` and adds Skyvern-specific helpers. It is passed as the first argument to every `@cached` function.
+
+| Method / Property | Description |
+|-------------------|-------------|
+| `page.goto(url)` | Navigate to a URL. |
+| `page.click(selector)` | Click an element by CSS selector. |
+| `page.fill(selector, value)` | Fill an input field. |
+| `page.select_option(selector, value)` | Select a `<select>` option. |
+| `page.wait_for_selector(selector)` | Wait for an element to appear. |
+| `page.current_label` | The active cache key (set automatically). |
+| All standard Playwright `Page` methods` | All Playwright page methods are available. |
+
+---
+
+## RunContext
+
+`RunContext` provides access to workflow parameters and upstream block outputs inside a cached function.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `context.parameters` | `dict` | All workflow input parameters and upstream block outputs (keyed by `label + "_output"`). |
+| `context.page` | `SkyvernPage` | The current browser page. |
+
+<CodeGroup>
+```python Python
+@cached("process_row")
+async def process_row_fn(page: SkyvernPage, context: RunContext):
+    # Access a workflow parameter
+    row_url = context.parameters.get("current_value")
+    await page.goto(row_url)
+    await page.click(".submit-btn")
+```
+</CodeGroup>
+
+---
+
+## Clearing the cache
+
+If a target website changes and you want to force Skyvern to re-learn from scratch, clear the cached scripts for a specific workflow via the API:
+
+```bash
+curl -X DELETE "https://api.skyvern.com/v1/workflows/{workflow_permanent_id}/scripts" \
+  -H "x-api-key: YOUR_API_KEY"
+```
+
+Or use `skyvern skill clear-cache --workflow-id <id>` from the CLI.
+
+---
+
+## Disabling caching for a block
+
+To opt a specific block out of caching (always use the AI agent), set `disable_cache: true` in the block definition:
+
+```yaml
+- block_type: navigation
+  label: tricky_page
+  navigation_goal: "Handle the tricky popup and COMPLETE when dismissed."
+  disable_cache: true
+```
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Script Functions"
+    icon="function"
+    href="/sdk-reference/script-functions"
+  >
+    Functions used inside @workflow scripts
+  </Card>
+  <Card
+    title="Workflow Blocks Reference"
+    icon="cube"
+    href="/multi-step-automations/workflow-blocks-reference"
+  >
+    JSON/YAML block definitions
+  </Card>
+  <Card
+    title="Tasks"
+    icon="play"
+    href="/sdk-reference/tasks"
+  >
+    Run single-step browser automations
+  </Card>
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/sdk-reference/error-handling"
+  >
+    Handle errors and configure retries
+  </Card>
+</CardGroup>

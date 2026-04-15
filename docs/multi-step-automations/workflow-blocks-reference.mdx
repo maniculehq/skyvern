@@ -37,6 +37,7 @@ Blocks are defined in the `workflow_definition.blocks` array. Use JSON when pass
 | [`print_page`](#print-page) | Save current page as PDF |
 | [`wait`](#wait) | Pause execution for a duration |
 | [`human_interaction`](#human-interaction) | Pause for human approval via email |
+| [`workflow_trigger`](#workflow-trigger) | Trigger another workflow from within this workflow |
 
 ---
 
@@ -1157,6 +1158,57 @@ Pause the workflow and send an email requesting human approval before continuing
 | `instructions` | string | `"Please review and approve or reject to continue the workflow."` | Instructions shown in the approval interface. |
 | `positive_descriptor` | string | `"Approve"` | Label for the approval button. |
 | `negative_descriptor` | string | `"Reject"` | Label for the rejection button. |
+
+---
+
+## Workflow Trigger
+
+Trigger another workflow from within the current workflow. Use this to chain workflows together as modular building blocks — for example, a "master" workflow that fans out to several specialised sub-workflows. Added in v1.0.22.
+
+<CodeGroup>
+```json JSON
+{
+  "block_type": "workflow_trigger",
+  "label": "run_verification",
+  "workflow_permanent_id": "wf_abc123",
+  "payload": {
+    "employee_name": "{{employee_name}}",
+    "employee_id": "{{employee_id}}"
+  },
+  "wait_for_completion": true,
+  "use_parent_browser_session": false
+}
+```
+
+```yaml YAML
+- block_type: workflow_trigger
+  label: run_verification
+  workflow_permanent_id: "wf_abc123"
+  payload:
+    employee_name: "{{employee_name}}"
+    employee_id: "{{employee_id}}"
+  wait_for_completion: true
+  use_parent_browser_session: false
+```
+</CodeGroup>
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow_permanent_id` | string | — | **Required.** The permanent ID of the workflow to trigger. Found in the workflow URL or settings. Supports Jinja2 templates. |
+| `payload` | object | — | Input parameters to pass to the triggered workflow. Values support Jinja2 templates. |
+| `wait_for_completion` | boolean | `true` | If `true`, the current workflow pauses until the triggered workflow finishes. If `false`, the trigger fires and execution continues immediately. |
+| `use_parent_browser_session` | boolean | `false` | If `true`, the triggered workflow shares the same live browser session as the parent. |
+| `browser_session_id` | string | — | Explicit browser session ID to pass to the triggered workflow. |
+
+**Output:** When `wait_for_completion` is `true`, the block output contains the triggered workflow's final output. Access it as `{{label_output}}` in downstream blocks.
+
+<Info>
+To find a workflow's `workflow_permanent_id`, open the workflow in the Skyvern UI. The ID appears in the URL: `https://app.skyvern.com/workflows/wf_abc123/...`
+</Info>
+
+<Note>
+Using `use_parent_browser_session: true` allows sub-workflows to continue where the parent left off in the same browser tab. Use this for sequential handoff patterns. For parallel execution or isolated runs, leave it `false`.
+</Note>
 
 ---
 
