@@ -1,58 +1,688 @@
 ---
-title: Workflow Blocks
-description: What are workflow blocks and how to use them
+title: Workflow Blocks Reference
+description: Complete reference for all Skyvern workflow block types, parameters, and examples
 slug: workflows/workflow-blocks-details
 ---
 
-## Navigation Block
-This block takes actions with a given navigation goal.
+Workflow blocks are the building units of Skyvern automations. Each block performs one discrete action. Blocks are chained into a directed graph where outputs from one block feed the inputs of the next.
 
-## Action Block
-Similar to the navigation block, but this block takes ONLY one action.
+Every block shares a set of common properties, and each block type adds its own parameters on top of those.
 
-## Extract Block
-This block extracts information from the website. You can define the data extraction schema with this block. No other actions will be taken.
+## Common Block Properties
 
-## Login Block
-This block can support most password required login tasks in a website, integrated with [Skyvern Credentials](/credentials/introduction) to make sure your password is never sent to an LLM.
+These properties apply to every block type:
 
-When a website has uncommon login requirements, you should update the default prompt in the block to provide more instructions.
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `block_type` | string (enum) | Yes | Identifies the block type (e.g., `task`, `for_loop`). |
+| `label` | string | Yes | Unique identifier within this workflow. Used to reference outputs via `{label}_output`. |
+| `next_block_label` | string | No | Override the default next block. Used to build non-linear DAGs or connect to `ConditionalBlock` branches. |
+| `continue_on_failure` | boolean | No | If `true`, workflow continues to the next block even when this block fails. Default: `false`. |
+| `error_code_mapping` | object | No | Map natural-language error conditions to short error codes. Makes downstream error handling deterministic. |
+| `disable_cache` | boolean | No | Disable output caching for this specific block execution. |
+| `model` | object | No | Override the LLM model for this block. Shape: `{llm_key: "ANTHROPIC_CLAUDE3_5_SONNET"}`. |
 
-## Validation Block
-Like having an assertion in a test, this block validates the state of the workflow. It terminates the workflow if the validation fails. 
+### Output parameters
 
-## Task Block
-This block navigates through the websites to take actions and/or extract information.
+Each block automatically produces an output parameter named `{label}_output`. Reference it in later blocks using `parameter_type: context` and `source_parameter_key: {label}_output`.
 
-## ForLoopBlock
-This block supports loop in the workflow.
+---
 
-## Url Block
-This block navigates to a given URL.
+## AI Navigation Blocks
 
-## Code Block
-This block allows you to write any custom python and playwright script to interact with the browser. For Skyvern Cloud, it's an invite only feature.
+### TaskBlock (`block_type: task`)
 
-## TextPromptBlock
-This block is a text only prompt block.
+The primary AI automation block. Skyvern's LLM agent navigates a website, performs actions, and optionally extracts structured data.
 
-## SendEmailBlock
-This block sends an email.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Often | Starting URL. Leave blank to continue from where the previous block left off. |
+| `navigation_goal` | string | Often | Instructions for what to do on the page. Include explicit `COMPLETE` and `TERMINATE` conditions. |
+| `data_extraction_goal` | string | No | What data to extract. Extraction runs after navigation finishes. |
+| `data_schema` | object / string | No | JSON Schema describing the shape of the extracted data. |
+| `max_retries` | integer | No | Number of step-level retries on transient failure. |
+| `max_steps_override` | integer | No | Cap the number of browser steps this block may take. |
+| `complete_on_download` | boolean | No | Automatically complete when a file download is triggered. |
+| `totp_identifier` | string | No | Correlates this block's TOTP request when multiple concurrent tasks share a TOTP provider. |
+| `totp_verification_url` | string | No | URL Skyvern calls to fetch the TOTP code when 2FA is required. |
+| `complete_criterion` | string | No | Natural-language description of a completion condition (alternative to embedding it in `navigation_goal`). |
+| `terminate_criterion` | string | No | Natural-language description of a termination condition. |
 
-## FileDownloadBlock
-This block downloads a file from the website.
+```yaml
+- block_type: task
+  label: login
+  parameter_keys:
+    - credentials
+  url: "{{ website_url }}"
+  navigation_goal: >-
+    Navigate to the login page and sign in using the provided credentials.
+    Dismiss any cookie or promotional popups first.
+    COMPLETE when you reach the account dashboard.
+    TERMINATE if login fails after three attempts.
+  error_code_mapping:
+    failed_to_login: Return this error if login was unsuccessful after multiple attempts.
+    stuck_with_popups: Return this error if a blocking popup prevents any action.
+```
 
-## FileParserBlock
-This block parses PDFs, CSVs, and Excel files from the website.
+---
 
-## PDFParserBlock
-This block parses a PDF file from the website.
+### NavigationV2Block / TaskV2Block (`block_type: task_v2`)
 
-## FileUploadBlock
-This block uploads all the downloaded files to a desired destination. Currently only AWS S3 is supported. Please contact support@skyvern.com if you need more integrations.
+The next-generation task block powered by the **Skyvern 2.0** engine. Designed for complex, multi-page goals that require deeper reasoning.
 
-## WaitBlock
-This block waits for a given amount of time.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `prompt` | string | Yes | Natural-language instructions. Describes the full goal, not just a single action. |
+| `url` | string | No | Starting URL. |
+| `totp_identifier` | string | No | TOTP correlation identifier. |
+| `totp_verification_url` | string | No | URL Skyvern calls to fetch the TOTP code. |
+| `max_iterations` | integer | No | Maximum planning iterations (server default applies if omitted). |
+| `max_steps` | integer | No | Maximum browser steps per iteration. |
 
-## NavigationV2Block (TaskV2Block)
-The advanced version of the NavigationBlock, powered by the Skyvern 2.0 engine. Designed for complicated goals.
+```yaml
+- block_type: task_v2
+  label: book_appointment
+  url: "https://healthcare-portal.example.com"
+  prompt: >-
+    Log in and book the earliest available appointment for a general checkup.
+    If no appointments are available in the next 30 days, COMPLETE and set
+    output to {"status": "no_availability"}.
+```
+
+---
+
+### NavigationBlock (`block_type: navigation`)
+
+Like TaskBlock, but focused exclusively on navigation — no data extraction.
+
+Uses the same parameters as TaskBlock (`url`, `navigation_goal`, `error_code_mapping`, `max_retries`, etc.).
+
+---
+
+### ActionBlock (`block_type: action`)
+
+Performs exactly **one** browser action (click, type, select, etc.) per execution step.
+
+Uses the same parameters as TaskBlock. Specify a precise `navigation_goal` describing a single action to take.
+
+---
+
+### ExtractionBlock (`block_type: extraction`)
+
+Extracts structured data from the current page without performing any additional navigation.
+
+Key parameters (same as TaskBlock): `data_extraction_goal`, `data_schema`.
+
+```yaml
+- block_type: extraction
+  label: extract_product_prices
+  data_extraction_goal: >-
+    Extract the name, price, and availability of every product listed on this page.
+  data_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        in_stock:
+          type: boolean
+```
+
+---
+
+### LoginBlock (`block_type: login`)
+
+Handles login flows with built-in integration with [Skyvern Credentials](/credentials/introduction). Credential values are never sent to the LLM.
+
+Uses the same parameters as TaskBlock. Supply the credential using a `bitwarden_login_credential` or platform credential parameter.
+
+```yaml
+parameters:
+  - key: site_credentials
+    parameter_type: bitwarden_login_credential
+    bitwarden_collection_id: "{{ BITWARDEN_COLLECTION_ID }}"
+    url_parameter_key: site_url
+
+blocks:
+  - block_type: login
+    label: authenticate
+    parameter_keys:
+      - site_credentials
+    url: "{{ site_url }}"
+    navigation_goal: >-
+      Log in using the provided credentials.
+      COMPLETE when authenticated. TERMINATE on repeated failure.
+```
+
+---
+
+### ValidationBlock (`block_type: validation`)
+
+Asserts page state before allowing the workflow to continue. If the assertion fails, the workflow terminates (unless `continue_on_failure` is set).
+
+<Warning>
+`ValidationBlock` cannot be the first block in a workflow.
+</Warning>
+
+Uses the same parameters as TaskBlock. Set `navigation_goal` to a testable condition.
+
+```yaml
+- block_type: validation
+  label: confirm_checkout_complete
+  navigation_goal: >-
+    Confirm the page shows an order confirmation message with an order number.
+    COMPLETE if confirmed. TERMINATE if no confirmation is visible.
+```
+
+---
+
+### FileDownloadBlock (`block_type: file_download`)
+
+Navigates a page and triggers a file download. Use `complete_on_download: true` in a TaskBlock for most download scenarios; this block is for cases where the download is the sole goal.
+
+Uses the same parameters as TaskBlock. The downloaded file is available at `SKYVERN_DOWNLOAD_DIRECTORY`.
+
+---
+
+## Navigation Utilities
+
+### UrlBlock (`block_type: goto_url`)
+
+Navigates directly to a URL without any AI-driven actions. The fastest way to change pages.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | Target URL. Supports Jinja2 templates (e.g., `"{{ target_url }}"`). |
+
+```yaml
+- block_type: goto_url
+  label: open_dashboard
+  url: "https://app.example.com/dashboard"
+```
+
+---
+
+## Control Flow Blocks
+
+### ForLoopBlock (`block_type: for_loop`)
+
+Iterates over a list (from a parameter or a previous block's output), executing `loop_blocks` for each item.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `loop_over_parameter_key` | string | Yes | Parameter key holding the list to iterate over. |
+| `loop_blocks` | array | Yes | Blocks to execute for each loop item. |
+| `continue_on_failure` | boolean | No | If `true`, continue with the next iteration when a loop body block fails. |
+| `complete_if_empty` | boolean | No | Complete successfully (instead of failing) when the loop list is empty. Default: `true`. |
+| `max_concurrency` | integer | No | Run up to this many iterations in parallel (1–20). Default: `1` (sequential). |
+
+Inside `loop_blocks`, reference the current item via `{{ current_item }}` and the current index via `{{ current_index }}`.
+
+```yaml
+- block_type: for_loop
+  label: process_orders
+  loop_over_parameter_key: order_ids
+  continue_on_failure: true
+  max_concurrency: 5
+  loop_blocks:
+    - block_type: task
+      label: download_invoice
+      complete_on_download: true
+      continue_on_failure: true
+      url: "{{ order_history_url }}"
+      navigation_goal: >-
+        Download the invoice for order {{ current_item }}.
+        COMPLETE after download is triggered. TERMINATE if no invoice is available.
+      error_code_mapping:
+        no_invoice: Return if the site does not provide a downloadable invoice.
+```
+
+---
+
+### ConditionalBlock (`block_type: conditional`)
+
+Routes execution to different branches based on ordered conditions. The first condition that evaluates to `true` wins.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch_conditions` | array of BranchCondition | Yes | Ordered list of conditions. Each has `criteria` (Jinja2 or natural language) and `next_block_label`. One may be marked as the default fallthrough. |
+
+```yaml
+- block_type: conditional
+  label: check_result
+  branch_conditions:
+    - criteria: "{{ extract_price_output.price | float < 10.0 }}"
+      next_block_label: send_low_price_alert
+    - criteria: "{{ extract_price_output.price | float >= 10.0 }}"
+      next_block_label: send_high_price_alert
+    - is_default: true
+      next_block_label: log_unknown_price
+```
+
+---
+
+### HumanInteractionBlock (`block_type: human_interaction`)
+
+Pauses the workflow and waits for a human to approve or reject before continuing.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `instructions` | string | Yes | Message shown to the human reviewer. |
+| `positive_descriptor` | string | No | Label for the approval action. Default: `"Approve"`. |
+| `negative_descriptor` | string | No | Label for the rejection action. Default: `"Reject"`. |
+| `timeout_seconds` | integer | No | Time to wait for a response. Default: 7200 (2 hours). On timeout, the workflow terminates. |
+| `sender` | string | No | Sender address for the notification email. |
+| `recipients` | array | No | Email addresses to notify when approval is needed. |
+| `subject` | string | No | Email subject. |
+| `body` | string | No | Email body. |
+
+```yaml
+- block_type: human_interaction
+  label: approve_purchase
+  instructions: >-
+    The agent found a matching item at ${{ price_output.price }}.
+    Approve to complete the purchase or reject to cancel.
+  recipients:
+    - manager@example.com
+  subject: "Purchase approval needed — ${{ price_output.price }}"
+  timeout_seconds: 3600
+```
+
+---
+
+### WorkflowTriggerBlock (`block_type: workflow_trigger`)
+
+Triggers a child workflow from within a parent workflow. Supports passing parameters and optionally waiting for the child to finish.
+
+<Note>
+Maximum workflow nesting depth is 10 levels.
+</Note>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `workflow_permanent_id` | string | Yes | The permanent ID of the workflow to trigger. |
+| `payload` | object | No | Key-value parameters passed to the child workflow. Supports Jinja2 templates. |
+| `wait_for_completion` | boolean | No | Wait for the child workflow to finish before continuing. Default: `true`. |
+| `use_parent_browser_session` | boolean | No | Share the parent's browser session with the child workflow. Default: `false`. |
+| `browser_session_id` | string | No | Pass a specific browser session ID to the child workflow. |
+
+```yaml
+- block_type: workflow_trigger
+  label: run_child_workflow
+  workflow_permanent_id: "wpid_abc123"
+  payload:
+    start_date: "{{ report_date }}"
+    target_url: "{{ site_url }}"
+  wait_for_completion: true
+```
+
+---
+
+## Data & AI Blocks
+
+### CodeBlock (`block_type: code`)
+
+Executes custom Python code inside a sandboxed environment. Can access workflow parameters and interact with the browser page via `skyvern_page`.
+
+<Note>
+`CodeBlock` is an **invite-only** feature on Skyvern Cloud. Contact [support@skyvern.com](mailto:support@skyvern.com) to request access.
+</Note>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `code` | string | Yes | Python code to execute. Must set a `result` variable; this becomes the block output. |
+| `parameter_keys` | array | No | Parameters available as local variables in the code. |
+
+**Available special variables:**
+
+- `skyvern_page` — The current Playwright `Page` object. Supports `await skyvern_page.goto(url)`, `await skyvern_page.title()`, etc.
+- Any key in `parameter_keys` is available as a local variable with its resolved value.
+- Set `result` to define the block's output.
+
+**Security restrictions:** No imports. No subprocess, OS, or module access. No dunder attributes.
+
+```yaml
+- block_type: code
+  label: calculate_diff
+  parameter_keys:
+    - alibaba_price
+    - amazon_price
+  code: |
+    if alibaba_price["unitPrice"] and amazon_price["unitPrice"]:
+        result = (alibaba_price["unitPrice"] - amazon_price["unitPrice"]) / amazon_price["unitPrice"]
+    else:
+        result = None
+```
+
+```yaml
+# Browser interaction example
+- block_type: code
+  label: capture_tab_url
+  code: |
+    result = {
+        "url": skyvern_page.url,
+        "title": await skyvern_page.title(),
+    }
+```
+
+---
+
+### TextPromptBlock (`block_type: text_prompt`)
+
+Sends a prompt to a language model and returns structured output. No browser interaction occurs.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `prompt` | string | Yes | The prompt to send. Supports Jinja2 templates using `parameter_keys`. |
+| `json_schema` | object | No | JSON Schema for the LLM response. Enforces structured output. |
+| `llm_key` | string | No | Override which LLM to use (e.g., `OPENAI_GPT4O`, `ANTHROPIC_CLAUDE3_5_SONNET`). |
+| `parameter_keys` | array | No | Parameters available as Jinja2 variables in the prompt. |
+
+```yaml
+- block_type: text_prompt
+  label: generate_summary
+  parameter_keys:
+    - extracted_data
+  llm_key: OPENAI_GPT4O
+  prompt: >-
+    You are a data analyst. Summarize the following product data in one sentence:
+    {{ extracted_data | tojson }}
+  json_schema:
+    type: object
+    properties:
+      summary:
+        type: string
+      sentiment:
+        type: string
+        enum: [positive, neutral, negative]
+```
+
+---
+
+### FileParserBlock (`block_type: file_url_parser`)
+
+Downloads a file from a URL and uses an LLM to parse and extract structured data from it.
+
+**Supported file types:** PDF, Excel (`.xlsx`, `.xls`, `.xlsm`), CSV/TSV, Word (`.docx`), images (PNG, JPG, GIF, BMP, WebP, TIFF).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_url` | string | Yes | URL of the file to download and parse. |
+| `file_type` | string (enum) | Yes | One of: `pdf`, `excel`, `csv`, `docx`, `image`. |
+| `json_schema` | object | No | Schema describing the structured output to extract from the file. |
+
+```yaml
+- block_type: file_url_parser
+  label: parse_invoice
+  file_url: "{{ invoice_download_url }}"
+  file_type: pdf
+  json_schema:
+    type: object
+    properties:
+      invoice_number:
+        type: string
+      total_amount:
+        type: number
+      line_items:
+        type: array
+        items:
+          type: object
+          properties:
+            description:
+              type: string
+            amount:
+              type: number
+```
+
+---
+
+### PDFParserBlock (`block_type: pdf_parser`)
+
+<Warning>
+**Deprecated.** Use [FileParserBlock](#fileparserblock-block_type-file_url_parser) with `file_type: pdf` instead.
+</Warning>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_url` | string | Yes | URL of the PDF to parse. |
+| `json_schema` | object | No | Extraction schema. |
+
+---
+
+### HttpRequestBlock (`block_type: http_request`)
+
+Makes an HTTP request to any URL. Safe for secrets — parameter values are sent directly and never passed to the LLM.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `method` | string | Yes | HTTP method: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`. |
+| `url` | string | Yes | Request URL. Supports Jinja2 templates. |
+| `headers` | object | No | HTTP request headers. |
+| `body` | object | No | Request body (serialized as JSON automatically). |
+| `files` | object | No | Multipart file upload. Keys are field names; values are local file paths. |
+| `timeout` | integer | No | Request timeout in seconds. Default: `30`. |
+| `follow_redirects` | boolean | No | Follow HTTP redirects. Default: `true`. |
+| `download_filename` | string | No | Save response body as a file with this name. |
+| `save_response_as_file` | boolean | No | Save the raw response body as a file artifact. |
+| `parameter_keys` | array | No | Parameters available as Jinja2 variables in `url`, `headers`, `body`. |
+
+```yaml
+- block_type: http_request
+  label: notify_webhook
+  method: POST
+  url: "https://hooks.example.com/notify"
+  headers:
+    Authorization: "Bearer {{ api_token }}"
+    Content-Type: application/json
+  body:
+    event: workflow_complete
+    order_id: "{{ order_id }}"
+    result: "{{ extract_output }}"
+  timeout: 15
+```
+
+---
+
+## File & Storage Blocks
+
+### WaitBlock (`block_type: wait`)
+
+Pauses workflow execution for a fixed duration.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `wait_sec` | integer | Yes | Number of seconds to pause. |
+
+```yaml
+- block_type: wait
+  label: pause_before_retry
+  wait_sec: 30
+```
+
+---
+
+### SendEmailBlock (`block_type: send_email`)
+
+Sends an email via SMTP, optionally attaching downloaded files.
+
+SMTP credentials should be stored as AWS Secrets Manager secrets and referenced via `aws_secret` parameters.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `smtp_host_secret_parameter_key` | string | Yes | Parameter key for the SMTP host (AWS secret). |
+| `smtp_port_secret_parameter_key` | string | Yes | Parameter key for the SMTP port (AWS secret). |
+| `smtp_username_secret_parameter_key` | string | Yes | Parameter key for the SMTP username (AWS secret). |
+| `smtp_password_secret_parameter_key` | string | Yes | Parameter key for the SMTP password (AWS secret). |
+| `sender` | string | Yes | From address. |
+| `recipients` | array | Yes | List of recipient email addresses. |
+| `subject` | string | Yes | Email subject. Supports Jinja2 templates. |
+| `body` | string | No | Email body text. Supports Jinja2 templates. |
+| `file_attachments` | array | No | List of local file paths to attach. Use `SKYVERN_DOWNLOAD_DIRECTORY` to attach all downloaded files. |
+
+```yaml
+parameters:
+  - key: smtp_host
+    parameter_type: aws_secret
+    aws_key: MY_SMTP_HOST
+  - key: smtp_port
+    parameter_type: aws_secret
+    aws_key: MY_SMTP_PORT
+  - key: smtp_username
+    parameter_type: aws_secret
+    aws_key: MY_SMTP_USERNAME
+  - key: smtp_password
+    parameter_type: aws_secret
+    aws_key: MY_SMTP_PASSWORD
+
+blocks:
+  - block_type: send_email
+    label: email_report
+    smtp_host_secret_parameter_key: smtp_host
+    smtp_port_secret_parameter_key: smtp_port
+    smtp_username_secret_parameter_key: smtp_username
+    smtp_password_secret_parameter_key: smtp_password
+    sender: reports@example.com
+    recipients:
+      - team@example.com
+    subject: "Daily Report — {{ current_date }}"
+    body: "Please find today's report attached."
+    file_attachments:
+      - SKYVERN_DOWNLOAD_DIRECTORY
+```
+
+---
+
+### DownloadToS3Block (`block_type: download_to_s3`)
+
+Downloads a file directly from a URL and uploads it to AWS S3. Does not use the browser.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | URL of the file to download (max 10 MB). |
+
+The block output contains the S3 URI of the uploaded file.
+
+```yaml
+- block_type: download_to_s3
+  label: archive_report
+  url: "{{ report_download_url }}"
+```
+
+---
+
+### UploadToS3Block (`block_type: upload_to_s3`)
+
+Uploads local files or directories to AWS S3 using the configured AWS credentials from the Skyvern server environment.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | No | Local file or directory path. Use `SKYVERN_DOWNLOAD_DIRECTORY` to upload all files downloaded during the workflow. |
+
+```yaml
+- block_type: upload_to_s3
+  label: upload_invoices
+  path: SKYVERN_DOWNLOAD_DIRECTORY
+```
+
+---
+
+### FileUploadBlock (`block_type: file_upload`)
+
+Uploads files to AWS S3 or Azure Blob Storage with explicit credentials.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `storage_type` | string | Yes | `s3` or `azure`. |
+| `path` | string | Yes | Local path to upload. Use `SKYVERN_DOWNLOAD_DIRECTORY` for downloaded files. |
+| `s3_bucket` | string | S3 only | S3 bucket name. |
+| `aws_access_key_id` | string | S3 only | AWS access key ID. |
+| `aws_secret_access_key` | string | S3 only | AWS secret access key. |
+| `region_name` | string | S3 only | AWS region (e.g., `us-east-1`). |
+| `azure_storage_account_name` | string | Azure only | Azure Storage account name. |
+| `azure_storage_account_key` | string | Azure only | Azure Storage account key. |
+| `azure_blob_container_name` | string | Azure only | Azure Blob container name. |
+
+```yaml
+- block_type: file_upload
+  label: upload_to_s3
+  storage_type: s3
+  path: SKYVERN_DOWNLOAD_DIRECTORY
+  s3_bucket: my-skyvern-bucket
+  aws_access_key_id: "{{ aws_key_id }}"
+  aws_secret_access_key: "{{ aws_secret_key }}"
+  region_name: us-east-1
+```
+
+**AWS IAM policy (minimum required permissions):**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": "arn:aws:s3:::my-skyvern-bucket/*"
+    }
+  ]
+}
+```
+
+---
+
+### PrintPageBlock (`block_type: print_page`)
+
+Converts the current browser page to a PDF and saves it as a workflow artifact.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `format` | string | No | Paper format: `A4`, `Letter`, `Legal`, `Tabloid`. Default: `A4`. |
+| `landscape` | boolean | No | Landscape orientation. Default: `false`. |
+| `print_background` | boolean | No | Include background colors and images. Default: `true`. |
+| `include_timestamp` | boolean | No | Add date/time headers and footers. Default: `true`. |
+| `custom_filename` | string | No | Custom filename for the saved PDF. |
+
+```yaml
+- block_type: print_page
+  label: save_confirmation_pdf
+  format: Letter
+  landscape: false
+  custom_filename: "order_confirmation_{{ current_date }}.pdf"
+```
+
+---
+
+## Parameter Types Reference
+
+Workflow parameters supply values to blocks. Declare them in the `parameters` section of the workflow definition.
+
+| `parameter_type` | Description |
+|------------------|-------------|
+| `workflow` | Value passed in at runtime via the Run Workflow API. |
+| `context` | Value taken from a previous block's output. Requires `source_parameter_key`. |
+| `aws_secret` | Value fetched from AWS Secrets Manager. Requires `aws_key`. |
+| `bitwarden_login_credential` | Credential fetched from Bitwarden. Requires collection and item config. |
+| `output` | Alias for `context` in some older workflow definitions. |
+
+---
+
+## Jinja2 Template Reference
+
+Block string fields support Jinja2 templating for dynamic values:
+
+| Template | Resolves to |
+|----------|-------------|
+| `{{ parameter_name }}` | Value of a declared parameter. |
+| `{{ block_label_output }}` | Full output object of a previous block. |
+| `{{ block_label_output.field }}` | Specific field from a block's output. |
+| `{{ current_item }}` | Current loop item inside `ForLoopBlock`. |
+| `{{ current_index }}` | Zero-based index of the current loop iteration. |
+| `{{ current_value }}` | Alias for `current_item`. |
+| `{{ current_date }}` | Today's date in `YYYY-MM-DD` format. |
+| `{{ workflow_id }}` | Permanent ID of the running workflow. |
+| `{{ workflow_run_id }}` | ID of the current workflow run. |
+| `{{ value \| json }}` | Inject `value` as a native JSON type (preserves booleans, integers, etc.). |
+| `{{ value \| tojson }}` | Serialize `value` to a JSON string. |
