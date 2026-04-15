@@ -42,6 +42,8 @@ This parameter defines the engine that powers the agent task.
 - Use `openai-cua` or `anthropic-cua` if you have an existing provider contract and want that provider's native computer use model.
 - Use `ui-tars` for visually rich desktop-style web UIs where screenshot-based navigation outperforms DOM parsing.
 
+When using the Python SDK, pass `engine` directly to `run_task()` — see the [Python SDK Reference](/sdk-reference/python-sdk#engine-selection-guide).
+
 ### [Data Extraction Schema](/api-reference/api-reference/agent/run-task#request.body.data_extraction_schema)
 
 Parameter: `data_extraction_schema`

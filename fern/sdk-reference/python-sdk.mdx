@@ -6,6 +6,10 @@ slug: sdk-reference/python-sdk
 
 The Skyvern Python SDK lets you automate browser tasks from Python code. It provides three interaction patterns — traditional Playwright, pure AI, and a hybrid fallback mode — so you can choose the right level of AI involvement for each step.
 
+<Tip>
+**Quick navigation:** [Run Tasks docs](/running-tasks/run-tasks) · [Workflows](/workflows/manage-workflows) · [Browser Sessions](/browser-sessions/introduction) · [Credentials](/credentials/introduction) · [Self-Hosted Setup](/self-hosted/overview) · [REST API Reference](/api-reference)
+</Tip>
+
 Install with:
 
 ```bash
@@ -129,7 +133,7 @@ Runs a single task described in natural language.
 | Parameter | Type | Description |
 |---|---|---|
 | `prompt` | `str` | Natural language description of the task |
-| `engine` | `RunEngine` | Agent engine to use (see Engine Selection Guide below) |
+| `engine` | `RunEngine` | Agent engine to use. `skyvern-1.0` is the SDK default; use `skyvern-2.0` for complex multi-page tasks. [See Engine Selection Guide below.](#engine-selection-guide) |
 | `url` | `str | None` | Starting URL. If omitted, the agent navigates from scratch |
 | `webhook_url` | `str | None` | URL to POST results to when the task completes |
 | `totp_identifier` | `str | None` | Identifier for TOTP 2FA codes stored in Skyvern |
@@ -141,7 +145,7 @@ Runs a single task described in natural language.
 | `max_steps` | `int | None` | Step limit (overrides server default) |
 | `wait_for_completion` | `bool` | Block until the task finishes (default `False`) |
 | `timeout` | `float` | Seconds to wait when `wait_for_completion=True` (default 1800 — 30 minutes) |
-| `browser_session_id` | `str | None` | Run the task in an existing persistent browser session |
+| `browser_session_id` | `str | None` | Run the task in an existing persistent browser session. [See Browser Sessions.](/browser-sessions/introduction) |
 
 ```python
 # With structured output
@@ -177,7 +181,7 @@ await skyvern.run_workflow(
 ) -> WorkflowRunResponse
 ```
 
-Triggers a saved workflow run.
+Triggers a saved workflow run. [Create and manage workflows in the Workflow Editor.](/workflows/manage-workflows)
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -519,7 +523,7 @@ Returns a list of all frames in the current page. Each entry has:
 
 ### `page.agent`
 
-Returns a `SkyvernBrowserPageAgent` instance for running full agent tasks in the context of the current browser session.
+Returns a `SkyvernBrowserPageAgent` instance. Use `page.agent` when you want to run a complete Skyvern agent task (multi-step navigation, login, file downloads, or full workflows) using the current browser's live state — the agent inherits the page's existing cookies, login sessions, and current position. This is the key difference from `Skyvern.run_task()`, which always starts a fresh browser context.
 
 ---
 
@@ -557,7 +561,7 @@ await page.agent.login(
 ) -> WorkflowRunResponse
 ```
 
-Runs a login workflow using stored credentials. Credentials are injected directly into the browser — they are never sent to the LLM.
+Runs a login workflow using stored credentials. Credentials are injected directly into the browser — they are never sent to the LLM. [See the Credentials section](/credentials/introduction) for how to create and manage stored credentials.
 
 | `credential_type` value | Description |
 |---|---|
@@ -747,3 +751,16 @@ task = await skyvern.run_task(
     wait_for_completion=True,
 )
 ```
+
+---
+
+## Related resources
+
+- [Run Tasks](/running-tasks/run-tasks) — Task API parameters, proxy, TOTP, webhooks, and use-case examples
+- [Workflows](/workflows/manage-workflows) — Build multi-step automation workflows with reusable blocks
+- [Workflow Blocks Reference](/workflows/workflow-blocks-details) — All workflow block types and their parameters
+- [Browser Sessions](/browser-sessions/introduction) — Persistent browser sessions that carry state across runs
+- [Credentials](/credentials/introduction) — Stored credential vault for secure login automation
+- [Self-Hosted Setup Guide](/self-hosted/overview) — Run Skyvern on your own infrastructure
+- [Configuration Reference](/self-hosted/configuration) — All environment variables for self-hosted deployments
+- [REST API Reference](/api-reference) — OpenAPI-generated reference for all endpoints

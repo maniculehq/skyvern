@@ -6,6 +6,8 @@ slug: workflows/workflow-blocks-details
 
 Workflow blocks are the building blocks of Skyvern workflows. Each block performs a specific function; blocks run in sequence (or in loops) to achieve your automation goal.
 
+Blocks are assembled in the [Workflow Editor](/workflows/manage-workflows). Parameters referenced in block fields use [Jinja2 syntax](/workflows/workflow-parameters) — for example, `{{my_param}}` or `{{block_name_output}}`.
+
 ## Navigation Block
 
 Navigates through a website to accomplish a goal. The agent takes as many actions as needed (up to `max_steps`) to complete the navigation goal.
@@ -96,12 +98,16 @@ Iterates over a list, running a set of child blocks once per item.
 | `{{current_item}}` | Alias for `{{current_value}}` |
 | `{{current_index}}` | Zero-based index of the current iteration |
 
-```python
-# Example: iterate over a list of URLs
+These variables are also documented in the [Reserved Parameters](/workflows/workflow-parameters#reserved-parameters) section alongside all other built-in Jinja variables.
+
+```yaml
+# Example workflow snippet: iterate over a list of URLs
 parameters:
   - key: urls
     parameter_type: workflow
-    default_value: ["https://example.com/page1", "https://example.com/page2"]
+    default_value:
+      - "https://example.com/page1"
+      - "https://example.com/page2"
 
 blocks:
   - block_type: for_loop
@@ -126,7 +132,7 @@ The advanced version of the Navigation Block powered by the **Skyvern 2.0** engi
 | `max_iterations` | integer | No | Overrides `MAX_ITERATIONS_PER_TASK_V2` (default 10) |
 | `max_steps_per_iteration` | integer | No | Step limit per iteration |
 
-Use this block when `skyvern-2.0` accuracy is needed within a workflow.
+Use this block when `skyvern-2.0` accuracy is needed within a workflow. [See the Engine Selection Guide](/running-tasks/run-tasks#engine-selection-guide) for a comparison of all available engines.
 
 ## Url Block
 
