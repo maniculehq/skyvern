@@ -64,6 +64,14 @@ The primary AI automation block. Skyvern's LLM agent navigates a website, perfor
     stuck_with_popups: Return this error if a blocking popup prevents any action.
 ```
 
+<Note>
+**Always include COMPLETE and TERMINATE conditions.** Without explicit stop conditions in `navigation_goal`, the agent will keep taking steps until it exhausts `max_steps_per_run`. Every step counts toward billing.
+
+**Blank `url` continues from the current page.** Skyvern keeps the browser session alive between blocks. If you leave `url` empty, the agent picks up exactly where the previous block left off. Make sure the previous block landed on a useful page.
+
+**`error_code_mapping` shapes your output.** If the agent encounters a condition matching one of your error descriptions, it sets `status: terminated` and returns `{"error": "your_code_key"}` as the output. Downstream code can branch on `{{ taskblock_output.error }}` instead of parsing free-text failure reasons.
+</Note>
+
 ---
 
 ### NavigationV2Block / TaskV2Block (`block_type: task_v2`)
@@ -240,6 +248,16 @@ Inside `loop_blocks`, reference the current item via `{{ current_item }}` and th
         no_invoice: Return if the site does not provide a downloadable invoice.
 ```
 
+<Tip>
+**Concurrency tradeoff:** Each parallel iteration runs in its own isolated browser session. On Skyvern Cloud the sessions are provisioned automatically; on self-hosted deployments make sure your `MAX_BROWSER_INSTANCES` can accommodate `max_concurrency` simultaneous sessions.
+
+**Outputs from failed iterations are `null`.** When `continue_on_failure: true` and an iteration fails, its output entry in the loop result list is `null`. Guard against this in downstream blocks: `{% if item is not none %}`.
+
+**`complete_if_empty` prevents failures on empty lists.** Without it, an empty `loop_over_parameter_key` list raises `NoIterableValueFound` and the workflow fails. Add `complete_if_empty: true` whenever the list may legitimately be empty (e.g., search results with zero matches).
+
+**Loop output shape.** The `for_loop` block's output is a list in the same order as the input. Reference the full list with `{{ process_orders_output }}` or a specific item with `{{ process_orders_output[0] }}`.
+</Tip>
+
 ---
 
 ### ConditionalBlock (`block_type: conditional`)
@@ -272,6 +290,14 @@ Each `criteria` object:
     - is_default: true
       next_block_label: log_unknown_price
 ```
+
+<Note>
+**First matching branch wins.** Conditions are evaluated in order; the first branch whose criteria evaluates to `true` executes, and all remaining branches are skipped. Put the most specific conditions first.
+
+**`prompt` criteria cost an LLM call.** When `criteria_type: prompt`, Skyvern sends the expression to the configured LLM to evaluate. If your condition is deterministic (comparing numbers, checking strings), prefer `criteria_type: jinja2_template` — it's free and instant.
+
+**Always include a default branch.** If no branch matches and no `is_default: true` branch exists, the workflow terminates with a failure. Add a catch-all default branch even if it just routes to a `wait` or error-handling block.
+</Note>
 
 ---
 
@@ -338,7 +364,7 @@ Maximum workflow nesting depth is 10 levels.
 
 ### CodeBlock (`block_type: code`)
 
-Executes custom Python code inside a sandboxed environment. Can access workflow parameters and interact with the browser page via `skyvern_page`.
+Executes custom Python code inside a sandboxed environment. Can access workflow parameters and interact with the browser page via `page`.
 
 <Note>
 `CodeBlock` is an **invite-only** feature on Skyvern Cloud. Contact [support@skyvern.com](mailto:support@skyvern.com) to request access.
@@ -349,13 +375,22 @@ Executes custom Python code inside a sandboxed environment. Can access workflow 
 | `code` | string | Yes | Python code to execute. Must set a `result` variable; this becomes the block output. |
 | `parameter_keys` | array | No | Parameters available as local variables in the code. |
 
-**Available special variables:**
+**Available variables:**
 
-- `skyvern_page` — The current Playwright `Page` object. Supports `await skyvern_page.goto(url)`, `await skyvern_page.title()`, etc.
-- Any key in `parameter_keys` is available as a local variable with its resolved value.
-- Set `result` to define the block's output.
+| Variable | Type | Description |
+|----------|------|-------------|
+| `page` | `playwright.async_api.Page` | The current browser page. Use `await page.goto(url)`, `await page.title()`, etc. |
+| Each key in `parameter_keys` | Any | Resolved parameter value, available as a local variable. |
 
-**Security restrictions:** No imports. No subprocess, OS, or module access. No dunder attributes.
+**Available built-ins:** `print`, `len`, `range`, `str`, `int`, `float`, `dict`, `list`, `tuple`, `set`, `bool`, `sleep` (alias for `asyncio.sleep`), `asyncio.sleep`, `re.match`/`search`/`findall`/`sub`/`compile`/`split`, `json.dumps`/`json.loads`, `Exception`.
+
+**Block output:** The entire local-variable scope at the end of execution is captured and becomes the block output (a dict). Assign to `result` — downstream blocks reference it as `{{ label_output.result }}`.
+
+**Security restrictions:** No `import` statements. No subprocess, OS, or filesystem access. No dunder attributes (`__class__`, `__globals__`, etc.). No `eval`, `exec`, or `compile`.
+
+<Warning>
+The sandbox is a defense-in-depth layer implemented via an AST blocklist, not full process isolation. Use CodeBlock only for trusted workflow authors.
+</Warning>
 
 ```yaml
 - block_type: code
@@ -376,8 +411,8 @@ Executes custom Python code inside a sandboxed environment. Can access workflow 
   label: capture_tab_url
   code: |
     result = {
-        "url": skyvern_page.url,
-        "title": await skyvern_page.title(),
+        "url": page.url,
+        "title": await page.title(),
     }
 ```
 
@@ -462,6 +497,21 @@ Downloads a file from a URL and uses an LLM to parse and extract structured data
 |-----------|------|----------|-------------|
 | `file_url` | string | Yes | URL of the PDF to parse. |
 | `json_schema` | object | No | Extraction schema. |
+
+**Migration example:**
+
+```yaml
+# Before (deprecated)
+- block_type: pdf_parser
+  label: parse_report
+  file_url: "{{ report_url }}"
+
+# After
+- block_type: file_url_parser
+  label: parse_report
+  file_url: "{{ report_url }}"
+  file_type: pdf
+```
 
 ---
 
@@ -667,6 +717,74 @@ Converts the current browser page to a PDF and saves it as a workflow artifact.
 ```
 
 ---
+
+## Common patterns and gotchas
+
+### Pattern: Handling empty search results in a loop
+
+When you loop over search results, the list may be empty. Combine `complete_if_empty` with a `ConditionalBlock` to branch cleanly:
+
+```yaml
+blocks:
+  - block_type: extraction
+    label: search_results
+    data_extraction_goal: Extract all matching order IDs from the page.
+    data_schema:
+      type: array
+      items:
+        type: string
+
+  - block_type: for_loop
+    label: process_each_order
+    loop_over_parameter_key: search_results_output
+    complete_if_empty: true
+    continue_on_failure: true
+    loop_blocks:
+      - block_type: task
+        label: download_order_invoice
+        complete_on_download: true
+        navigation_goal: >-
+          Download the invoice for order {{ current_item }}.
+          COMPLETE after download starts. TERMINATE if no invoice link is visible.
+```
+
+### Pattern: Two-engine workflow (fast navigation + deep extraction)
+
+Use `skyvern-1.0` for simple navigation steps and `task_v2` for complex multi-page reasoning:
+
+```yaml
+blocks:
+  # Fast login with skyvern-1.0
+  - block_type: login
+    label: authenticate
+    parameter_keys:
+      - site_credentials
+    url: "{{ site_url }}"
+    navigation_goal: >-
+      Log in using the provided credentials.
+      COMPLETE when the dashboard is shown. TERMINATE after three failed attempts.
+
+  # Deep reasoning task with task_v2
+  - block_type: task_v2
+    label: find_and_book
+    prompt: >-
+      Find the cheapest available flight from {{ origin }} to {{ destination }}
+      departing on {{ departure_date }}, select it, and proceed through the booking
+      flow until the payment page. Stop before entering any payment details.
+      Return {"flight_price": <price>, "airline": <airline>}.
+```
+
+### Gotcha: Block labels must be unique within a workflow
+
+Each block's `label` is used as a namespace for its output (`{{ label_output }}`). Duplicate labels cause unpredictable output routing. Labels must also be valid Python identifiers — no hyphens, no spaces.
+
+### Gotcha: `continue_on_failure` interacts with the next block
+
+When `continue_on_failure: true` on a block, execution always proceeds to the next block regardless of the block's success status. The output parameter is still set (to `null` if the block failed). A `ValidationBlock` immediately after will see the prior block's (possibly null) output.
+
+### Gotcha: Jinja2 strict mode and missing variables
+
+Block string fields use Jinja2 with `StrictUndefined`. Referencing a variable that doesn't exist (including a misspelled parameter key or a block label that hasn't run yet) raises a template error and fails the block. If a variable may not be set, use Jinja2's `default` filter: `{{ some_var | default("") }}`.
 
 ## Parameter Types Reference
 

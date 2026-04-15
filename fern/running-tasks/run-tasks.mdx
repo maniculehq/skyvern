@@ -183,6 +183,52 @@ You can also use the [GET RUN API](/api-reference/api-reference/agent/get-run) t
 
 ---
 
+## Gotchas and edge cases
+
+### Always include COMPLETE and TERMINATE conditions
+
+Without explicit stop conditions, the agent continues taking steps until it exhausts `max_steps`. Every step is billed. A task with `navigation_goal: "Go to google.com"` and no COMPLETE condition will keep navigating until it times out.
+
+**Template:**
+```
+Navigate to {{ url }} and do X.
+COMPLETE when [specific observable condition].
+TERMINATE if [failure condition — e.g., login error, content not found after N attempts].
+```
+
+### Engine selection tradeoffs
+
+| Engine | Best for | Tradeoff |
+|--------|----------|----------|
+| `skyvern-2.0` (default) | Multi-page reasoning, complex flows | Higher per-step cost; deeper planning |
+| `skyvern-1.0` | Single-page actions, form fills, simple extractions | Faster, cheaper; less effective on flows requiring strategy |
+| `openai-cua` / `anthropic-cua` | Comparison testing, CUA-specific tasks | Provider-dependent rate limits and pricing |
+
+For tasks involving login → navigate → extract on a known site, `skyvern-1.0` often completes faster and at lower cost. Reserve `skyvern-2.0` for tasks where the path is unpredictable.
+
+### `max_steps` and billing
+
+You are charged per step. A "step" is one round-trip: screenshot → LLM call → action. A typical login is 3–5 steps; a multi-page checkout is 15–30. Set `max_steps` conservatively and increase only if tasks are being cut short:
+
+```python
+# Start with a conservative estimate; increase after observing actual step counts
+task = await skyvern.run_task(
+    prompt="Fill out the contact form and submit",
+    url="https://example.com/contact",
+    max_steps=15,
+    wait_for_completion=True,
+)
+print(f"Used {task.steps} steps")
+```
+
+### `wait_for_completion` uses polling, not SSE
+
+When `wait_for_completion=True`, the SDK polls `GET /runs/{run_id}` on a fixed interval. It does not use Server-Sent Events or long polling. The task continues running on Skyvern's servers regardless — the parameter only controls whether the SDK call returns immediately or waits. This means:
+- You can safely set a webhook **and** `wait_for_completion=True` — both work simultaneously.
+- The polling interval is not configurable; set `timeout` to limit how long the SDK waits.
+
+---
+
 ## Next steps
 
 <CardGroup cols={2}>

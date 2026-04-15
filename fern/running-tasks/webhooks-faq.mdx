@@ -49,13 +49,17 @@ Notes:
 
 <CodeGroup>
 ```python Python
+import hashlib
 import hmac
-from fastapi import Request
 
-def validate_skyvern_request_headers(request: Request) -> bool:
+async def validate_skyvern_request_headers(request: Request) -> bool:
     header_skyvern_signature = request.headers["x-skyvern-signature"]
-    payload = request.body() # this is a bytes
-    hash_obj = hmac.new(SKYVERN_API_KEY.encode("utf-8"), msg=payload, digestmod=hashlib.sha256)
+    payload = await request.body()  # bytes — must await in FastAPI
+    hash_obj = hmac.new(
+        SKYVERN_API_KEY.encode("utf-8"),
+        msg=payload,
+        digestmod=hashlib.sha256,
+    )
     client_generated_signature = hash_obj.hexdigest()
     return header_skyvern_signature == client_generated_signature
 ```
@@ -74,6 +78,25 @@ function validateSkyvernRequestHeaders(req) {
 ```
 
 </CodeGroup>
+
+<Note>
+**Replay protection:** Skyvern also sends an `x-skyvern-timestamp` header (Unix timestamp string). For production deployments, validate that the timestamp is within an acceptable window (e.g., ±5 minutes) before processing the payload:
+
+```python
+import time
+
+TOLERANCE_SECONDS = 300  # 5 minutes
+
+def is_timestamp_fresh(request: Request) -> bool:
+    ts = request.headers.get("x-skyvern-timestamp", "")
+    try:
+        return abs(time.time() - float(ts)) < TOLERANCE_SECONDS
+    except ValueError:
+        return False
+```
+
+Check the timestamp **before** computing the HMAC to avoid doing expensive work on obviously stale requests.
+</Note>
 
 ## Can I Replay Webhook?
 
