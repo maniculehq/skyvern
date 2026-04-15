@@ -347,7 +347,7 @@ Iterate over a list of values, yielding a `SkyvernLoopItem` for each iteration.
 
 ```python
 async def loop(
-    values: list | str,
+    values: Sequence | str,
     complete_if_empty: bool = False,
     label: str | None = None,
 ) -> AsyncGenerator[SkyvernLoopItem, None]
@@ -355,7 +355,7 @@ async def loop(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `values` | `list \| str` | — | **Required.** List to iterate over, or a parameter key reference (string) to resolve at runtime. |
+| `values` | `Sequence \| str` | — | **Required.** Sequence (list, tuple, etc.) to iterate over, or a parameter key reference (string) to resolve at runtime. |
 | `complete_if_empty` | `bool` | `False` | Complete successfully if the list is empty. |
 | `label` | `str` | `None` | Block label. |
 
@@ -488,7 +488,7 @@ async def run_code(
     code: str,
     label: str | None = None,
     parameters: list[str] | None = None,
-) -> dict
+) -> dict[str, Any]
 ```
 
 | Parameter | Type | Default | Description |

@@ -27,14 +27,11 @@ The `@workflow` decorator marks the entry-point function of a Skyvern script. It
 ```python
 from skyvern import workflow
 
-@workflow(
-    title: str | None = None,
-    totp_url: str | None = None,
-    totp_identifier: str | None = None,
-    webhook_url: str | None = None,
-    max_steps: int | None = None,
-)
-def my_workflow(parameters: dict):
+# Decorator signature:
+# workflow(title=None, totp_url=None, totp_identifier=None, webhook_url=None, max_steps=None)
+
+@workflow(title="My workflow")
+async def run_workflow(parameters: dict):
     ...
 ```
 
@@ -70,7 +67,8 @@ The `@cached` decorator registers a Python function as the cached implementation
 ```python
 from skyvern import cached
 
-@cached(cache_key: str)
+# cache_key must match the label of the workflow block being replaced
+@cached("my_block_label")
 async def my_function(page: SkyvernPage, context: RunContext) -> Any:
     ...
 ```
@@ -153,11 +151,9 @@ async def process_row_fn(page: SkyvernPage, context: RunContext):
 If a target website changes and you want to force Skyvern to re-learn from scratch, clear the cached scripts for a specific workflow via the API:
 
 ```bash
-curl -X DELETE "https://api.skyvern.com/v1/workflows/{workflow_permanent_id}/scripts" \
+curl -X DELETE "https://api.skyvern.com/v1/scripts/{workflow_permanent_id}/cache" \
   -H "x-api-key: YOUR_API_KEY"
 ```
-
-Or use `skyvern skill clear-cache --workflow-id <id>` from the CLI.
 
 ---
 
