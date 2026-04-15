@@ -132,6 +132,15 @@ If you configured headful mode during `skyvern quickstart`, a Chromium window op
 | `llm_config` | `LLMConfig \| LLMRouterConfig \| None` | `None` | Override the LLM. If omitted, uses `LLM_KEY` from `.env`. |
 | `settings` | `dict \| None` | `None` | Override `.env` settings at runtime. Example: `{"MAX_STEPS_PER_RUN": 100}` |
 
+<Warning>
+**Local mode gotchas**
+
+- `Skyvern.local()` requires a running PostgreSQL or SQLite database (configured in `.env`). If the database is not initialized, you'll get a connection error. Run `skyvern quickstart` or `alembic upgrade head` first.
+- Starting with v1.0.29, `skyvern run server` uses SQLite by default, so local development no longer requires PostgreSQL. If you're on an older version, you need the Docker stack (`docker-compose up`) or a local PostgreSQL instance.
+- `Skyvern.local()` boots the Skyvern engine in-process. Only call it once per Python process — multiple calls create duplicate browser managers and may conflict.
+- If you're using local mode in tests, call `await client.close()` (or use the client as an async context manager: `async with Skyvern.local() as client: ...`) to properly clean up browser resources.
+</Warning>
+
 ---
 
 ## `wait_for_completion`

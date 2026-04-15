@@ -106,6 +106,16 @@ Every block produces an output accessible by other blocks as `{{label_output}}`,
 - **Print Page**: the file path of the saved PDF.
 - **Validation / Conditional / Goto URL / Wait / Send Email / Human Interaction**: `null` (control-flow blocks).
 
+### Adaptive Caching eligibility
+
+[Adaptive Caching](/sdk-reference/caching) automatically generates cached Python scripts for browser-interaction blocks after successful runs. Not all block types are cacheable:
+
+**Cached automatically:** `navigation`, `action`, `extraction`, `login`, `file_download`, `for_loop` (and its child blocks), `task`, `task_v2`
+
+**Never cached (always use AI at runtime):** `conditional`, `code`, `wait`, `text_prompt`, `http_request`, `send_email`, `validation`, `human_interaction`, `workflow_trigger`, `goto_url`, `file_url_parser`, `pdf_parser`, `print_page`, `upload_to_s3`, `download_to_s3`, `file_upload`
+
+Set `disable_cache: true` on any cacheable block to opt it out of caching and always use the AI agent for that block.
+
 ---
 
 ## Navigation
@@ -169,6 +179,16 @@ Navigate through websites to take actions with a natural language goal.
 <Info>
 For guidance on which engine to choose (`skyvern-1.0` vs `skyvern-2.0`), see [Engine Selection](/running-automations/task-parameters#engine).
 </Info>
+
+<Tip>
+**Writing effective navigation goals**
+
+- Always include explicit COMPLETE and TERMINATE conditions. Without them, the agent may run too many steps or get stuck in a loop. Example: *"COMPLETE when the dashboard is visible. TERMINATE if a login page appears."*
+- Reference parameters with `{{parameter_name}}` directly inside `navigation_goal`. Make sure `parameter_keys` lists the same names.
+- Set `max_steps_per_run` to a reasonable upper bound (e.g., 20–30 for typical form flows). Lower values reduce cost; too low causes premature failure.
+- Use `max_retries` (default 0) on flaky pages like those with rate-limiting or intermittent CAPTCHAs. Each retry restarts the block from `url`.
+- `complete_on_download: true` is a shorthand for "COMPLETE when the download dialog appears." Use it with `download_suffix` to name the file.
+</Tip>
 
 ---
 
@@ -538,6 +558,14 @@ Branch workflow execution based on conditions. Supports Jinja2 templates or LLM-
 | `description` | string | — | Description of this branch. |
 | `is_default` | boolean | `false` | If true, this branch is used when no other conditions match. |
 
+<Note>
+**Jinja2 vs. LLM evaluation**
+
+Use `criteria_type: jinja2_template` when the condition depends on structured data (upstream block outputs, workflow parameters). Jinja2 expressions are evaluated instantly with no AI call. Use `criteria_type: prompt` when the condition requires understanding unstructured text or page state — this calls the LLM, adding latency and cost.
+
+**Adaptive Caching and conditional blocks**: Conditional blocks themselves are _never_ cached — they always run via the AI agent so conditions are evaluated fresh. The action blocks _inside_ each branch are cached as normal and benefit from Adaptive Caching once that branch has been executed at least once.
+</Note>
+
 ---
 
 ## For Loop
@@ -586,6 +614,7 @@ Iterate over an array and execute nested blocks for each item.
 | `loop_over_parameter_key` | string | `""` | Parameter containing the array to iterate. |
 | `loop_variable_reference` | string | — | Custom name for the loop variable. |
 | `complete_if_empty` | boolean | `false` | If `true`, completes successfully when array is empty. |
+| `max_concurrency` | integer | `null` | Maximum number of iterations to run in parallel. `null` or `1` = sequential (default). Accepted range: 2–20. Added in v1.0.29. |
 
 <Info>
 **Accessing the current item inside a loop**
@@ -596,6 +625,15 @@ In the example above, the loop label is `apply_to_jobs` and the nested block lab
 </Info>
 
 The output of a `for_loop` block is an array containing the result from each iteration.
+
+<Warning>
+**For-loop limits and gotchas**
+
+- **100-iteration hard cap**: For-loops stop after 100 iterations regardless of how many items are in the list. If your list is longer, split it into batches and chain multiple loops.
+- **Empty list default**: If the list is empty and `complete_if_empty` is `false` (the default), the block fails. Set `complete_if_empty: true` to treat an empty list as a successful no-op.
+- **Parallel execution requires fresh browser sessions**: When `max_concurrency > 1`, each iteration gets its own isolated browser. Persistent browser sessions cannot be shared across parallel iterations — if a `browser_session_id` is set on the workflow run, Skyvern automatically falls back to sequential execution.
+- **Parallel execution is subject to org quota**: Your organization's parallel-session limit may cap `max_concurrency` below the value you set. If the quota is exhausted, Skyvern falls back to sequential execution rather than failing.
+</Warning>
 
 ---
 

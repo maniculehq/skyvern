@@ -20,6 +20,35 @@ This "record and replay" pattern is transparent: you do not need to change your 
 
 ---
 
+## Which blocks are cached
+
+Not all block types participate in Adaptive Caching. The table below shows which blocks are eligible and which always run via the AI agent.
+
+| Eligible for caching | Never cached (always AI) |
+|---|---|
+| `navigation` | `conditional` |
+| `action` | `wait` |
+| `extraction` | `code` |
+| `login` | `text_prompt` |
+| `file_download` | `http_request` |
+| `for_loop` (and its child blocks) | `send_email` |
+| `task` | `validation` |
+| `task_v2` | `human_interaction` |
+| | `workflow_trigger` |
+| | `goto_url` |
+| | `file_url_parser` |
+| | `pdf_parser` |
+| | `print_page` |
+| | `upload_to_s3` |
+| | `download_to_s3` |
+| | `file_upload` |
+
+<Note>
+`conditional` blocks are never cached by design — branch conditions must be evaluated at runtime against the current state. However, the blocks **inside** each branch are individually cached once that branch has been executed at least once. See [Conditional branches and progressive caching](#conditional-branches-and-progressive-caching) below.
+</Note>
+
+---
+
 ## @workflow decorator
 
 The `@workflow` decorator marks the entry-point function of a Skyvern script. It is required when writing a script that will be executed via `skyvern run` or the Scripts API.
@@ -116,11 +145,20 @@ async def run_workflow(parameters: dict):
 |-------------------|-------------|
 | `page.goto(url)` | Navigate to a URL. |
 | `page.click(selector)` | Click an element by CSS selector. |
-| `page.fill(selector, value)` | Fill an input field. |
-| `page.select_option(selector, value)` | Select a `<select>` option. |
 | `page.wait_for_selector(selector)` | Wait for an element to appear. |
 | `page.current_label` | The active cache key (set automatically). |
-| All standard Playwright `Page` methods` | All Playwright page methods are available. |
+| `page.fill(selector, value, prompt=None, ai="fallback")` | Fill an input. Supports the same selector + prompt + AI fallback as `click`. |
+| `page.hover(selector, hold_seconds=0.0)` | Move the mouse over an element, optionally holding for `hold_seconds`. |
+| `page.select_option(selector, value, ...)` | Select an option in a `<select>` element. |
+| `page.evaluate(expression)` | Run arbitrary JavaScript in the page context. |
+| `page.keyboard.press(key)` / `page.keyboard.type(text)` | Low-level keyboard input. |
+| `page.get_actual_value(value, totp_identifier, totp_url)` | Resolve a credential reference or TOTP code to its real value. |
+| `page.get_totp_digit(context, field_name, digit_index, ...)` | Get a single digit from a TOTP code (for multi-field TOTP inputs). |
+| All standard Playwright `Page` methods | Full Playwright async API is available. |
+
+<Note>
+`SkyvernPage.click()` and `SkyvernPage.fill()` default to `ai="fallback"`, which tries the CSS selector first, then calls the AI agent if the selector fails or the element is not found. Pass `ai=None` to disable AI fallback entirely. Pass `mode='direct'` for a raw Playwright click with no selector retry or AI fallback.
+</Note>
 
 ---
 
@@ -167,6 +205,51 @@ To opt a specific block out of caching (always use the AI agent), set `disable_c
   navigation_goal: "Handle the tricky popup and COMPLETE when dismissed."
   disable_cache: true
 ```
+
+---
+
+## Conditional branches and progressive caching
+
+`conditional` blocks themselves are **never cached** — they always execute via the AI agent so that branch conditions are evaluated against the actual runtime state. This is intentional.
+
+The blocks **inside** each branch, however, are individually cached the first time that branch executes. Because branches are mutually exclusive, caching is progressive:
+
+- **Run 1** takes branch A → Skyvern caches branch A's child blocks.
+- **Run 2** takes branch B → Skyvern caches branch B's child blocks.
+- **After both branches have executed at least once**, all children have warm caches and future runs of either path avoid AI calls.
+
+Until a branch has been executed at least once, Skyvern uses the AI agent for that branch's blocks.
+
+```yaml
+- block_type: conditional  # ← always runs via AI; never cached
+  label: check_status
+  branch_conditions:
+    - criteria:
+        criteria_type: jinja2_template
+        expression: "{{ status == 'approved' }}"
+      next_block_label: process_approved  # cached after first execution of this branch
+    - is_default: true
+      next_block_label: handle_pending     # cached after first execution of this branch
+```
+
+---
+
+## Running in code mode (`run_with: code`)
+
+Skyvern Cloud exposes a **Run with Code** toggle in the workflow UI. When enabled, `run_with: code` is set on the run, and Skyvern attempts to execute the entire workflow using cached Python functions without making any AI calls.
+
+**Requirements for a fully cached run:**
+
+- Every top-level block in the workflow must have a cached script with a non-null `run_signature`.
+- If **any** block is missing a cached script, Skyvern silently falls back to the AI agent for the entire workflow (not just the missing block).
+
+**Getting there:**
+
+After a successful AI-driven run, Skyvern automatically generates cached scripts for all eligible blocks. After a few successful AI runs — enough for every branch to execute at least once — the workflow can typically run entirely in code mode.
+
+<Note>
+The `ai_fallback_triggered` field in the run response indicates whether the cache was bypassed (in full or in part) during that run. If it is `true`, check which blocks lack a cached `run_signature` and run the workflow in AI mode a few more times until all branches have been exercised.
+</Note>
 
 ---
 

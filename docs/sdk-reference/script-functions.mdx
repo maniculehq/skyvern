@@ -339,6 +339,10 @@ branch = await conditional("check_status")
 ```
 </CodeGroup>
 
+<Note>
+The `@cached` function registered as the conditional handler must return a dict with exactly two keys: `next_block_label` (the label of the branch block to execute) and `branch_index` (0-based integer for the branch taken). If the function returns `None` or a dict without these keys, the block fails. Conditional blocks themselves are never cached by Adaptive Caching — this `@cached` usage is explicit, not auto-generated.
+</Note>
+
 ---
 
 ## loop
@@ -376,6 +380,24 @@ async for item in loop(["https://job1.com", "https://job2.com"], label="job_loop
     )
 ```
 </CodeGroup>
+
+<Warning>
+**Edge cases and gotchas**
+
+- **100-iteration hard limit**: For-loops cap out at 100 iterations. If your list has more than 100 items, execution stops and the block fails with a message about the limit. Split large lists into batches.
+- **Empty lists**: If `values` is an empty list and `complete_if_empty=False` (the default), the loop block fails. Pass `complete_if_empty=True` to treat an empty list as a successful no-op.
+- **String parameter key**: When `values` is a string (not a list), it is interpreted as a workflow parameter key that Skyvern resolves to a list at runtime. This is how you loop over a parameter supplied by the caller rather than a hardcoded list.
+</Warning>
+
+```python
+# Loop over a list stored in a workflow parameter named "job_urls"
+async for item in loop("job_urls", label="job_loop"):
+    await run_task(
+        prompt="Fill and submit the job application form.",
+        url=item.current_value,
+        label="submit_application",
+    )
+```
 
 ---
 
@@ -509,6 +531,16 @@ output = await run_code(
 ```
 </CodeGroup>
 
+<Warning>
+**Security and execution notes**
+
+- `run_code` executes Python code in the same process as the Skyvern server. There is no sandbox or resource limit enforced by the block itself.
+- The code runs in an async context. Use `await` for async operations.
+- The code has access to regular Python imports. Avoid importing packages that are not installed in the Skyvern environment.
+- The `result` variable set at the end of the code block is captured as the block output. If no `result` is assigned, the output is `None`.
+- Parameters listed in `parameters` are injected into the code's local scope as top-level variables.
+</Warning>
+
 ---
 
 ## parse_pdf
@@ -565,6 +597,38 @@ async def parse_file(
 | `file_type` | `str` | — | **Required.** `"csv"`, `"excel"`, or `"pdf"`. |
 | `schema` | `dict` | `None` | JSON Schema for structured output. |
 | `label` | `str` | `None` | Block label. |
+
+---
+
+## run_script
+
+Execute a saved Skyvern script by its ID. Use this to run a reusable automation defined in the Scripts section.
+
+```python
+async def run_script(
+    script_id: str,
+    parameters: dict | None = None,
+    label: str | None = None,
+) -> None
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `script_id` | `str` | — | **Required.** The permanent ID of the script to execute. |
+| `parameters` | `dict` | `None` | Input parameters to pass to the script. |
+| `label` | `str` | `None` | Block label. |
+
+<CodeGroup>
+```python Python
+from skyvern import run_script
+
+await run_script(
+    script_id="scr_abc123",
+    parameters={"url": "https://app.example.com", "user_id": "{{user_id}}"},
+    label="run_report_script",
+)
+```
+</CodeGroup>
 
 ---
 
