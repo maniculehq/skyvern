@@ -19,7 +19,7 @@ const profile = await skyvern.createBrowserProfile({
   name: "production-login",
   workflow_run_id: "wr_abc123",
 });
-console.log(profile.browser_profile_id); // bpf_abc123
+console.log(profile.browser_profile_id); // bp_abc123
 ```
 
 ### Parameters
@@ -37,7 +37,7 @@ You must provide either `workflow_run_id` or `browser_session_id`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `browser_profile_id` | `string` | Unique ID. Starts with `bpf_`. |
+| `browser_profile_id` | `string` | Unique ID. Starts with `bp_`. |
 | `name` | `string` | Profile name. |
 | `description` | `string \| undefined` | Profile description. |
 | `created_at` | `string` | When the profile was created. |
@@ -102,7 +102,7 @@ for (const p of profiles) {
 Get a single profile by ID.
 
 ```typescript
-const profile = await skyvern.getBrowserProfile("bpf_abc123");
+const profile = await skyvern.getBrowserProfile("bp_abc123");
 console.log(profile.name);
 ```
 
@@ -121,7 +121,7 @@ console.log(profile.name);
 Delete a browser profile.
 
 ```typescript
-await skyvern.deleteBrowserProfile("bpf_abc123");
+await skyvern.deleteBrowserProfile("bp_abc123");
 ```
 
 ### Parameters

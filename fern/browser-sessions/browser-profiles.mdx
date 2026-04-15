@@ -31,7 +31,7 @@ from skyvern import Skyvern
 skyvern = Skyvern(api_key="YOUR_API_KEY")
 
 # After the workflow run completes, reuse its persisted session
-browser_profile = await skyvern.browser_profiles.create_browser_profile(
+browser_profile = await skyvern.create_browser_profile(
     name="hn-login-profile",
     workflow_run_id="wr_123",
 )
@@ -76,7 +76,7 @@ from skyvern import Skyvern
 
 skyvern = Skyvern(api_key="YOUR_API_KEY")
 
-browser_profile = await skyvern.browser_profiles.create_browser_profile(
+browser_profile = await skyvern.create_browser_profile(
     name="support-agent",
     browser_session_id="pbs_123",
     description="Support queue session",

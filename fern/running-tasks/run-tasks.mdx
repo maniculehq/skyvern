@@ -218,7 +218,7 @@ task = await skyvern.run_task(
     max_steps=15,
     wait_for_completion=True,
 )
-print(f"Used {task.steps} steps")
+print(f"Used {task.step_count} steps")
 ```
 
 ### `wait_for_completion` uses polling, not SSE
