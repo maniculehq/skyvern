@@ -104,6 +104,20 @@ async def main():
         print(task.output)
 ```
 
+<Tip>
+**`Skyvern.local()` vs `Skyvern(api_key=...)`**
+
+| | `Skyvern.local()` | `Skyvern(api_key=...)` |
+|---|---|---|
+| Server required | No (in-process) | Yes (remote or local service) |
+| LLM configured in | `llm_config` or env vars | Service `.env` |
+| Database | In-memory SQLite by default | Service's database |
+| Good for | Scripts, CI, tests | Production, multi-user |
+| Browser launches | In your Python process | In the service |
+
+`Skyvern.local()` still requires a configured LLM provider (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) in the environment. It will raise a configuration error at task-run time if no LLM is reachable.
+</Tip>
+
 ---
 
 ### `run_task()`
@@ -164,6 +178,14 @@ task = await skyvern.run_task(
 )
 print(task.output)  # {"title": "...", "url": "...", "points": 123}
 ```
+
+<Tip>
+**`wait_for_completion` gotchas:**
+- When `wait_for_completion=True`, the call returns as soon as the task reaches any terminal state (`completed`, `failed`, `terminated`, `cancelled`). Check `task.status` before reading `task.output`.
+- The default `timeout=1800.0` (30 min) raises `asyncio.TimeoutError` if the task hasn't completed. Set a shorter timeout for tasks you expect to finish quickly.
+- Tasks that hit `MAX_STEPS_PER_RUN` finish with `status="failed"` — not a Python exception. Always check `task.status`.
+- Use `webhook_url` instead of `wait_for_completion=True` in production webhook flows where you don't want to block a long-running HTTP connection.
+</Tip>
 
 ---
 
@@ -465,6 +487,22 @@ Fills a field that has an autocomplete dropdown — types the value and selects 
 
 ---
 
+### AI mode reference
+
+The `ai` parameter on `click()`, `fill()`, and similar methods controls when the AI agent is invoked:
+
+| `ai` value | Behavior | When to use |
+|---|---|---|
+| `"fallback"` (default) | Try the selector first. If it fails (element not found, not interactable, timeout), fall back to AI using `prompt` | Most cases — fast when the selector works, resilient when it doesn't |
+| `"proactive"` | Skip the selector entirely and go straight to AI | When you don't have a reliable selector, or when the page structure changes frequently |
+| `"off"` | No AI fallback — behave exactly like standard Playwright | When you want strict, deterministic behavior and failures should surface immediately |
+
+<Warning>
+If you pass `ai="fallback"` but no `prompt`, the AI fallback has nothing to work with. In that case, a selector failure surfaces as a standard Playwright error rather than an AI retry. Always provide a `prompt` when using `ai="fallback"` or `ai="proactive"`.
+</Warning>
+
+---
+
 ### Frame navigation methods
 
 #### `frame_switch()`
@@ -480,7 +518,7 @@ await page.frame_switch(
 
 Returns a dict containing `name`, `url`, `selector`, `frame_name`, and `index` for the switched frame.
 
-Switches the page context to an iframe. Provide exactly one of `selector`, `name`, or `index`.
+Switches the page context to an iframe. Provide **exactly one** of `selector`, `name`, or `index`.
 
 ```python
 # Switch by CSS selector
@@ -493,6 +531,10 @@ await page.frame_switch(name="payment")
 await page.frame_switch(index=0)
 ```
 
+<Warning>
+`frame_switch` raises a `ValueError` if you provide zero or more than one parameter. It also raises `ValueError` if the selector does not match any element, if the matched element is not an iframe, or if the frame `name` does not exist. Always call `frame_main()` after you are done with the iframe to restore the top-level context.
+</Warning>
+
 #### `frame_main()`
 
 ```python
@@ -500,6 +542,10 @@ page.frame_main() -> dict
 ```
 
 Synchronous (no `await`). Switches back to the main (top-level) frame from within an iframe. Returns `{"status": "switched_to_main_frame"}`.
+
+<Tip>
+`frame_main()` is one of the few methods on `SkyvernBrowserPage` that does **not** need `await`. Calling `await page.frame_main()` will raise a `TypeError` because the return value is a plain `dict`, not a coroutine.
+</Tip>
 
 #### `frame_list()`
 

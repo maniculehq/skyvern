@@ -47,33 +47,92 @@ Notes:
 
 ## How do we handle webhook authentication? (ie how can we handle callbacks?)
 
+Every webhook Skyvern sends includes two headers for verification:
+
+| Header | Description |
+|---|---|
+| `x-skyvern-signature` | HMAC-SHA256 hex digest of the request body, signed with your API key |
+| `x-skyvern-timestamp` | Unix timestamp (seconds) of when the signature was generated |
+
+The signature is computed on the **exact JSON body bytes** Skyvern sends (compact, no extra whitespace). Read the raw body bytes before any JSON parsing to ensure the bytes match.
+
 <CodeGroup>
 ```python Python
+import hashlib
 import hmac
-from fastapi import Request
+import time
+from fastapi import Request, HTTPException
 
-def validate_skyvern_request_headers(request: Request) -> bool:
-    header_skyvern_signature = request.headers["x-skyvern-signature"]
-    payload = request.body() # this is a bytes
-    hash_obj = hmac.new(SKYVERN_API_KEY.encode("utf-8"), msg=payload, digestmod=hashlib.sha256)
-    client_generated_signature = hash_obj.hexdigest()
-    return header_skyvern_signature == client_generated_signature
+SKYVERN_API_KEY = "your-api-key"
+MAX_TIMESTAMP_AGE_SECONDS = 300  # reject requests older than 5 minutes
+
+async def validate_skyvern_webhook(request: Request) -> bool:
+    header_signature = request.headers.get("x-skyvern-signature")
+    header_timestamp = request.headers.get("x-skyvern-timestamp")
+
+    if not header_signature or not header_timestamp:
+        raise HTTPException(status_code=401, detail="Missing Skyvern headers")
+
+    # Replay protection: reject stale requests
+    request_age = abs(time.time() - int(header_timestamp))
+    if request_age > MAX_TIMESTAMP_AGE_SECONDS:
+        raise HTTPException(status_code=401, detail="Webhook timestamp too old")
+
+    # Read raw bytes — do NOT parse JSON first
+    payload = await request.body()
+    hash_obj = hmac.new(
+        SKYVERN_API_KEY.encode("utf-8"),
+        msg=payload,
+        digestmod=hashlib.sha256,
+    )
+    expected_signature = hash_obj.hexdigest()
+
+    if not hmac.compare_digest(header_signature, expected_signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    return True
 ```
 
 ```javascript Javascript
 const crypto = require('crypto');
 
-function validateSkyvernRequestHeaders(req) {
-    const headerSkyvernSignature = req.headers['x-skyvern-signature'];
-    const payload = req.body; // assuming req.body is a Buffer or string
-    const hash = crypto.createHmac('sha256', process.env.SKYVERN_API_KEY)
-                        .update(payload)
-                        .digest('hex');
-    return headerSkyvernSignature === hash;
+const SKYVERN_API_KEY = process.env.SKYVERN_API_KEY;
+const MAX_TIMESTAMP_AGE_SECONDS = 300; // reject requests older than 5 minutes
+
+function validateSkyvernWebhook(req) {
+    const headerSignature = req.headers['x-skyvern-signature'];
+    const headerTimestamp = req.headers['x-skyvern-timestamp'];
+
+    if (!headerSignature || !headerTimestamp) {
+        throw new Error('Missing Skyvern headers');
+    }
+
+    // Replay protection
+    const age = Math.abs(Date.now() / 1000 - parseInt(headerTimestamp, 10));
+    if (age > MAX_TIMESTAMP_AGE_SECONDS) {
+        throw new Error('Webhook timestamp too old');
+    }
+
+    // req.body must be the raw Buffer — configure express with
+    // app.use(express.raw({ type: 'application/json' })) before this route
+    const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    const expected = crypto
+        .createHmac('sha256', SKYVERN_API_KEY)
+        .update(payload)
+        .digest('hex');
+
+    if (!crypto.timingSafeEqual(Buffer.from(headerSignature), Buffer.from(expected))) {
+        throw new Error('Invalid signature');
+    }
+
+    return true;
 }
 ```
-
 </CodeGroup>
+
+<Warning>
+**Body parsing gotcha**: Compute the signature on the **raw request body bytes** before any JSON parsing. If your framework parses and re-serializes the JSON body (e.g., Express with `express.json()` middleware), the byte representation may change and the signature will not match. In Express, use `express.raw({ type: 'application/json' })` on webhook routes instead of `express.json()`.
+</Warning>
 
 ## Can I Replay Webhook?
 

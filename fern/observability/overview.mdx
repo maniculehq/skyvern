@@ -64,3 +64,33 @@ The trace timeline shows the complete workflow execution with synchronized brows
 <picture>
   <img src="../images/observability/laminar-skyvern.png" alt="Skyvern trace in Laminar" />
 </picture>
+
+---
+
+## OpenTelemetry (self-hosted / OTLP)
+
+Skyvern includes `opentelemetry-api` and can export OTLP traces to any compatible backend (Jaeger, Tempo, Honeycomb, Datadog, etc.).
+
+To enable OTLP export, set the standard OpenTelemetry SDK environment variables before starting the Skyvern service:
+
+```bash
+# OTLP gRPC exporter (default port 4317)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://your-collector:4317
+OTEL_SERVICE_NAME=skyvern
+OTEL_TRACES_SAMPLER=parentbased_always_on
+```
+
+Or for HTTP:
+```bash
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://your-collector:4318/v1/traces
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+Skyvern uses the OpenTelemetry auto-instrumentation hooks. The traces you will see include:
+- **LiteLLM spans** — one span per LLM call, with model name, token counts, and latency
+- **Playwright action spans** — one span per browser action (click, fill, navigate, screenshot)
+- **Workflow block spans** — one span per block execution with block type and status
+
+<Tip>
+Laminar (above) wraps OpenTelemetry and adds a browser-session recording layer. For most users, Laminar is the simpler path. Use raw OTLP integration if you already have an observability stack and want to avoid a separate service.
+</Tip>

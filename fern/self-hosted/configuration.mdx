@@ -19,6 +19,7 @@ Variables are read by `skyvern/config.py` using [pydantic-settings](https://docs
 | `SECRET_KEY` | `PLACEHOLDER` | JWT signing secret. **Generate a secure random value for any non-local deployment.** Example: `openssl rand -hex 32` |
 | `ALLOWED_ORIGINS` | `["*"]` | CORS allowed origins as a JSON list. Restrict this in production: `["https://your-domain.com"]` |
 | `ALLOWED_HOSTS` | `[]` | HTTP Host header allowlist. Empty means all hosts are allowed |
+| `BLOCKED_HOSTS` | `["localhost"]` | Domain names that are blocked as webhook callback URLs and credential service endpoints. Private IP ranges (`10.x`, `172.16.x`, `192.168.x`, loopback) are always blocked regardless of this list. Add to `ALLOWED_HOSTS` to unblock a specific host for internal deployments |
 | `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `JSON_LOGGING` | `false` | Emit structured JSON log lines (recommended for log aggregation pipelines) |
 
@@ -112,10 +113,10 @@ Set the `ENABLE_*` flag to `true` for your provider, then supply the API key.
 
 | Variable | Default | Description |
 |---|---|---|
-| `BROWSER_TYPE` | `chromium-headful` | Browser launch mode. Options: `chromium-headful` (visible window), `chromium-headless` (no window), `cdp-connect` (attach to existing browser) |
+| `BROWSER_TYPE` | `chromium-headful` | Browser launch mode. Options: `chromium-headful` (visible window), `chromium-headless` (no window, good for servers), `cdp-connect` (attach to existing browser via CDP) |
 | `BROWSER_REMOTE_DEBUGGING_URL` | `http://127.0.0.1:9222` | CDP URL when `BROWSER_TYPE=cdp-connect` |
 | `CHROME_EXECUTABLE_PATH` | _(none)_ | Path to a specific Chrome/Chromium binary. When set with `BROWSER_TYPE=cdp-connect`, Skyvern launches this binary |
-| `MAX_STEPS_PER_RUN` | `10` | Maximum steps a task can take before failing. Higher values allow more complex tasks but increase cost |
+| `MAX_STEPS_PER_RUN` | `10` | Maximum steps a task can take before failing. **The default of 10 is intentionally conservative.** Simple form fills usually need 3–8 steps; complex multi-page tasks may need 20–50. Raise this (e.g., `50`) for complex tasks. You are charged per step, so set a reasonable upper bound |
 | `BROWSER_ACTION_TIMEOUT_MS` | `5000` | Timeout for individual element interactions (click, fill, etc.) in milliseconds |
 | `BROWSER_LOADING_TIMEOUT_MS` | `60000` | Page load timeout in milliseconds |
 | `BROWSER_SCREENSHOT_TIMEOUT_MS` | `20000` | Screenshot capture timeout in milliseconds |
@@ -184,9 +185,43 @@ Skyvern stores screenshots, HAR files, and other artifacts from task runs.
 | Variable | Default | Description |
 |---|---|---|
 | `WORKFLOW_WAIT_BLOCK_MAX_SEC` | `1800` | Maximum seconds a WaitBlock can pause a workflow (default 30 minutes) |
-| `WORKFLOW_TEMPLATING_STRICTNESS` | `lax` | Jinja template error handling: `strict` (raise on undefined) or `lax` (substitute empty string) |
+| `WORKFLOW_TEMPLATING_STRICTNESS` | `lax` | Jinja template error handling. `lax` silently substitutes an empty string for undefined variables — useful during development. `strict` raises an error on any undefined variable — recommended for production to catch mis-spelled parameter keys early |
 | `MAX_STEPS_PER_TASK_V2` | `25` | Step limit for the Skyvern 2.0 engine per iteration |
 | `MAX_ITERATIONS_PER_TASK_V2` | `10` | Iteration limit for the Skyvern 2.0 engine per task |
+
+---
+
+## Common gotchas
+
+### Tasks fail with "Max steps exceeded"
+
+The default `MAX_STEPS_PER_RUN=10` is low. If your tasks involve multiple pages or require more than ~8 actions, increase this:
+
+```bash
+MAX_STEPS_PER_RUN=50
+```
+
+### Webhook callbacks return 400 "blocked host"
+
+By default, `BLOCKED_HOSTS=["localhost"]` and all private IP ranges (`10.x`, `172.x`, `192.168.x`, loopback) are blocked as webhook targets. If you run your webhook receiver on a private network, add the host to `ALLOWED_HOSTS`:
+
+```bash
+ALLOWED_HOSTS=["my-internal-host.company.internal"]
+```
+
+`ALLOWED_HOSTS` is a whitelist: hosts in this list bypass both the `BLOCKED_HOSTS` check and the private-IP block.
+
+### Workflow parameters silently empty in `lax` mode
+
+With `WORKFLOW_TEMPLATING_STRICTNESS=lax` (the default), a typo in a parameter key (`{{sarch_query}}` instead of `{{search_query}}`) renders as an empty string with no error. Switch to `strict` in production to catch these early:
+
+```bash
+WORKFLOW_TEMPLATING_STRICTNESS=strict
+```
+
+### SQLite is not suitable for concurrent workflows
+
+The default SQLite backend (`~/.skyvern/data.db`) serializes all writes. Running multiple concurrent workflows will work but may be slow. Switch to PostgreSQL for any multi-user or high-throughput deployment.
 
 ---
 

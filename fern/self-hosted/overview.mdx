@@ -203,6 +203,42 @@ docker compose up -d
 
 Migrations run automatically on container start.
 
+<Warning>
+Always run `alembic upgrade head` (or restart the container, which runs migrations automatically) before starting the service after a version upgrade. Starting the server against an out-of-date schema will cause runtime errors.
+</Warning>
+
+---
+
+## Common pitfalls
+
+### Chrome 136+: CDP connect user-data-dir copy
+
+Since Chrome 136, Chrome blocks remote debugging connections using the default user profile directory. When you use `BROWSER_TYPE=cdp-connect` with your local Chrome:
+
+- Skyvern automatically **copies** your Chrome user data directory to `./tmp/user_data_dir` on first connection.
+- Subsequent connections reuse the copy, so changes (new cookies, saved passwords) in the copy do **not** sync back to your regular Chrome profile.
+- If the copy is stale (e.g., you updated your real Chrome profile), delete `./tmp/user_data_dir` and reconnect to get a fresh copy.
+
+### SQLite write contention
+
+The default SQLite backend serializes all writes. Multiple concurrent workflows will queue behind each other. If you see slow starts or timeouts under load, switch to PostgreSQL.
+
+### First-run Playwright browser install
+
+`skyvern quickstart` installs Playwright browsers automatically. If you install Skyvern manually (`pip install skyvern`) without running `quickstart`, you may see browser launch errors. Fix this by running:
+
+```bash
+playwright install chromium
+playwright install-deps
+```
+
+### Service starts but tasks fail immediately
+
+Check `skyvern status` and look for:
+- **LLM configuration**: ensure `LLM_KEY` is set and the corresponding `ENABLE_*` flag and API key are present.
+- **Step limit**: if tasks fail with "Max steps exceeded", increase `MAX_STEPS_PER_RUN` (see [Configuration Reference](/self-hosted/configuration)).
+- **Browser not found**: if `BROWSER_TYPE=cdp-connect`, ensure Chrome is running with `--remote-debugging-port=9222`.
+
 ---
 
 ## Next steps

@@ -100,6 +100,10 @@ Iterates over a list, running a set of child blocks once per item.
 
 These variables are also documented in the [Reserved Parameters](/workflows/workflow-parameters#reserved-parameters) section alongside all other built-in Jinja variables.
 
+<Warning>
+**Cross-loop reference restriction**: you cannot reference a block that is *inside* a `ForLoopBlock` from *outside* the loop. The inner blocks' outputs are scoped to their loop iteration. If you need to aggregate results across all iterations, collect them inside the loop (e.g. using a `CodeBlock` or `TextPromptBlock`) and reference the loop block's own output after it finishes.
+</Warning>
+
 ```yaml
 # Example workflow snippet: iterate over a list of URLs
 parameters:
@@ -148,17 +152,65 @@ Runs arbitrary Python and Playwright code in the browser context. Available to a
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `code` | string | Yes | Python code using `page` (Playwright page) and `context` (workflow context) |
+| `code` | string | Yes | Async Python code. May use `page` (Playwright) and any parameters you list in `parameters` |
+| `parameters` | list | No | Workflow parameters to inject as local variables by their key name |
 
-The code block receives:
-- `page`: a `SkyvernBrowserPage` (Playwright `Page` extension with AI methods)
-- `context`: `WorkflowRunContext` with `parameters` dict and output storage
+### Execution environment
+
+The code runs inside an `async def wrapper()` function. It receives:
+- **`page`**: a `SkyvernBrowserPage` (Playwright `Page` extension with AI methods such as `act()`, `extract()`, `validate()`)
+- **Your parameters by name**: any parameter key listed in `parameters` is injected as a local variable — for example, a parameter with key `search_query` is available as the local variable `search_query`
+- **Limited builtins**: `print`, `len`, `range`, `str`, `int`, `float`, `dict`, `list`, `tuple`, `set`, `bool`, `sleep`, `asyncio.sleep`, `re`, `json`, `Exception`
+
+### Block output
+
+The block output is a **dictionary of all local variables** at the end of execution. Whatever you assign to local variables becomes accessible to later blocks via `{{your_block_label_output.variable_name}}`.
 
 ```python
-# Example: access a workflow parameter and do custom scraping
+# Example: get page title and extract structured data
 title = await page.title()
-context.output["page_title"] = title
+
+data = await page.extract(
+    "Extract the product name and price",
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "price": {"type": "number"},
+        },
+    },
+)
+
+product_name = data.get("name", "")
+product_price = data.get("price", 0)
+# Later blocks can reference {{your_block_label_output.title}},
+# {{your_block_label_output.product_name}}, etc.
 ```
+
+### Jinja in code
+
+The `code` field itself is rendered as a Jinja template before execution, so you can inline workflow parameter values directly:
+
+```python
+await page.goto("{{target_url}}")
+await page.act("Search for {{search_query}}")
+result = await page.extract("Extract the search results count")
+count = result.get("count", 0)
+```
+
+### Sandbox restrictions
+
+The code block enforces a blocklist-based sandbox. The following are **not allowed**:
+
+- `import` statements — all module imports are blocked. Use the pre-injected `re`, `json`, and `asyncio.sleep` for common needs.
+- Dunder attribute access (`obj.__class__`, `obj.__dict__`, etc.)
+- Subprocess creation (`popen`, `system`, `create_subprocess_exec`, etc.)
+- Direct filesystem operations (`listdir`, `makedirs`, etc.)
+- `eval`, `exec`, `getattr`, `setattr`, `globals`, `vars`
+
+<Warning>
+The sandbox is a blocklist, not process-level isolation. Do not rely on it as a security boundary in multi-tenant deployments. For production use, keep CodeBlock access restricted to trusted users.
+</Warning>
 
 ## TextPromptBlock
 

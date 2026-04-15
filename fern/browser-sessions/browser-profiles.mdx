@@ -6,13 +6,37 @@ slug: browser-sessions/browser-profiles
 
 ## Why Browser Profiles?
 
-Browser Profiles capture the full browser state (cookies, storage, session files) after a run completes so that future runs can skip the login or warm-up steps. They are ideal when you:
+Browser Profiles capture the full browser state after a run completes so that future runs can skip the login or warm-up steps. They are ideal when you:
 
 - Need repeatable workflows that stay logged into the same account across days.
 - Want to fan out multiple workflows that all reuse the same authenticated browser state.
 - Need an audit-friendly way to persist state separate from long-lived browser sessions.
 
 Whereas a **browser session** is a temporary, real-time browser, a **browser profile** is a reusable snapshot created from that session (or from a workflow run that persisted its session). Profiles are scoped to your organization and can be reused as often as you need.
+
+### What state is captured
+
+A browser profile archives the complete Chromium user-data directory, which includes:
+
+- **Cookies** (including HttpOnly and secure session cookies)
+- **LocalStorage** and **SessionStorage** per origin
+- **IndexedDB** databases
+- **Cache storage** (Service Worker caches)
+- **Extension state** (if browser extensions are configured)
+
+This means login sessions that rely on any of these storage mechanisms are preserved. **However, the profile only captures what the browser held at snapshot time.** Server-side session expiry, cookie max-age limits, and MFA token rotation all apply normally once the profile is restored.
+
+### Profile staleness
+
+Profiles become stale when:
+
+| Cause | What happens |
+|---|---|
+| Site cookie `max-age` / `expires` passes | The cookie is discarded by the browser on restore; the workflow will need to log in again |
+| Server invalidates the session (forced logout, password change) | Authentication fails at runtime despite valid cookies in the profile |
+| Site rotates anti-CSRF tokens on each page load | The stored token is stale; Skyvern's agent typically handles this transparently |
+
+**Recommendation:** refresh your browser profile regularly (weekly for consumer sites, daily for sites with short session lifetimes). Run a minimal "check if still logged in" workflow using `ValidationBlock` and recreate the profile when it fails.
 
 ## How Browser Profiles Work
 
@@ -100,4 +124,20 @@ print(workflow_run.run_id)
 ```
 
 If the workflow also sets `persist_browser_session: true`, you can capture a fresh profile again at the end and keep the cycle going.
+
+---
+
+## Profiles vs. Browser Sessions
+
+| | Browser Profile | Browser Session |
+|---|---|---|
+| Lifecycle | Persistent snapshot, reused across runs | Temporary, exists until closed |
+| State currency | Point-in-time snapshot | Live, real-time state |
+| Concurrency | Multiple runs can load the same profile simultaneously | One active connection at a time |
+| Suitable for | Fan-out: many workflows sharing the same login | Sequential: multi-step workflows that build state across tasks |
+| After a site logout | Profile must be refreshed | Session reflects the logout immediately |
+
+<Warning>
+**Concurrent profile reads are safe, but concurrent writes create conflicts.** If two workflows finish at the same time and both try to save a new profile from the same session, the second write overwrites the first. To avoid data races when refreshing a profile, ensure only one workflow is writing back to a given profile at a time.
+</Warning>
 

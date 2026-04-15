@@ -42,8 +42,10 @@ With these registered as parameters, the user doesn’t have to change the value
 
 <img src="../images/what_is_a_parameter/run_workflow.png"/>
 
-## Credential Parameters 
-Credential parameter can be an input for running a workflow.
+## Credential Parameters
+
+Credential parameters let you pass a stored Skyvern credential (username/password, credit card, TOTP) to a workflow at run time without hard-coding any secrets.
+
 <img src="../images/what_is_a_parameter/add_credential_parameter.png"/>
 
 You can also choose a credential parameter for a login block.
@@ -51,6 +53,26 @@ You can also choose a credential parameter for a login block.
 
 Pick the credential to use when running the workflow when you have defined a credential parameter in the workflow.
 <img src="../images/what_is_a_parameter/run_workflow_with_credential.png"/>
+
+### How credential injection works
+
+When a credential parameter is resolved at run time, Skyvern:
+
+1. Looks up the credential in the vault using the provided credential ID.
+2. **Replaces sensitive fields with opaque placeholder tokens** — the LLM only ever sees tokens like `PLACEHOLDER_abc123`, never the real password.
+3. Injects the actual secret values directly into browser actions (type-into-field, etc.) at execution time.
+
+This means your credentials are **never sent to the LLM provider**. The LLM decides *where* to type, and the browser engine injects *what* to type.
+
+### What happens if the credential is missing at run time
+
+If you pass an invalid or missing `credential_id` when running a workflow, the run will fail at the first block that tries to resolve the credential with an error such as:
+
+```
+CredentialParameterNotFound: Credential with id 'cred_xyz' not found
+```
+
+Always verify that the credential exists in your vault before triggering a workflow that depends on it.
 
 ## Reserved Parameters
 There are some parameters that are reserved by Skyvern and cannot be used as a parameter key/name:
@@ -62,9 +84,14 @@ There are some parameters that are reserved by Skyvern and cannot be used as a p
 - `{{workflow_id}}`: the unique ID of the workflow definition.
 - `{{workflow_permanent_id}}`: the permanent ID that persists across workflow versions.
 - `{{workflow_run_id}}`: the unique ID of the current workflow run.
+- `{{SKYVERN_DOWNLOAD_DIRECTORY}}`: the local path where files downloaded during the workflow are stored. Use this in blocks that need to reference downloaded files (e.g. `FileParserBlock`, `UploadToS3Block`).
 
 ## Block Output Parameters
-Any block name ({{your_block_name}} or {{your_block_name_output}}) can be referenced as a parameter by a later block, with the exception of referencing a block within a for loop from outside of the for loop block.
+Any block name (`{{your_block_name}}` or `{{your_block_name_output}}`) can be referenced as a parameter by a later block.
+
+**Cross-loop reference restriction**: you cannot reference a block that is *inside* a `ForLoopBlock` from *outside* that loop. If you need to accumulate results from a loop, use a `TextPromptBlock` or `CodeBlock` inside the loop to collect values into the loop's output, then reference the loop block's output after the loop ends.
+
+**Forward references are not allowed**: a block cannot reference the output of a block that runs *after* it. Skyvern validates these at workflow execution time and will fail the run with a reference error if a forward reference is detected.
 
 ## Referencing A Parameter
 - Any parameter can be referenced in [JINJA syntax](https://jinja.palletsprojects.com/en/stable/templates/).
