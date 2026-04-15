@@ -36,6 +36,9 @@ tabs:
   home:
     display-name: Home
     icon: home
+  sdk:
+    display-name: SDK
+    icon: code
   api:
     display-name: API Reference
     icon: code
@@ -146,6 +149,12 @@ navigation:
         contents:
           - page: Overview
             path: observability/overview.mdx
+      - section: Self-Hosting
+        contents:
+          - page: Setup Guide
+            path: self-hosted/overview.mdx
+          - page: Configuration Reference
+            path: self-hosted/configuration.mdx
       - section: Integrations
         contents:
           - page: MCP Server
@@ -162,6 +171,12 @@ navigation:
             path: integrations/workato.mdx
           - page: Ollama + LiteLLM
             path: integrations/ollama-litellm.mdx
+  - tab: sdk
+    layout:
+      - section: Python SDK
+        contents:
+          - page: Python SDK Reference
+            path: sdk-reference/python-sdk.mdx
   - tab: api
     layout:
       - api: API Reference

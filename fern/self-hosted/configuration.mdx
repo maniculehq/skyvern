@@ -1,0 +1,222 @@
+---
+title: Configuration Reference
+description: Environment variables for self-hosted Skyvern deployments
+slug: self-hosted/configuration
+---
+
+All Skyvern settings are controlled through environment variables. Set them in a `.env` file in your project root, or export them in your shell before starting the service.
+
+Variables are read by `skyvern/config.py` using [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/). Any variable not set uses the documented default.
+
+---
+
+## Core / Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENV` | `local` | Environment name. Common values: `local`, `staging`, `prod`. Affects CORS, logging, and session behavior |
+| `PORT` | `8000` | API server port |
+| `SECRET_KEY` | `PLACEHOLDER` | JWT signing secret. **Generate a secure random value for any non-local deployment.** Example: `openssl rand -hex 32` |
+| `ALLOWED_ORIGINS` | `["*"]` | CORS allowed origins as a JSON list. Restrict this in production: `["https://your-domain.com"]` |
+| `ALLOWED_HOSTS` | `[]` | HTTP Host header allowlist. Empty means all hosts are allowed |
+| `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `JSON_LOGGING` | `false` | Emit structured JSON log lines (recommended for log aggregation pipelines) |
+
+---
+
+## Database
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_STRING` | `sqlite+aiosqlite:///$HOME/.skyvern/data.db` | Primary database connection URL. For production PostgreSQL: `postgresql+psycopg://user:pass@host:5432/dbname`. The SQLite default works out of the box for local dev |
+| `DATABASE_REPLICA_STRING` | _(none)_ | Read replica DSN. When set, read queries are routed to this database |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `60000` | Query timeout in milliseconds before Skyvern cancels a slow query |
+| `DATABASE_POOL_SIZE` | `5` | SQLAlchemy connection pool size |
+| `DATABASE_POOL_MAX_OVERFLOW` | `10` | Maximum overflow connections above `DATABASE_POOL_SIZE` |
+| `DISABLE_CONNECTION_POOL` | `false` | Disable connection pooling (useful for PgBouncer in transaction mode) |
+
+**Docker Compose default:**
+```bash
+DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@postgres:5432/skyvern
+```
+
+---
+
+## LLM
+
+### Provider selection
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_KEY` | `OPENAI_GPT4O` | Primary model key. See supported values below |
+| `SECONDARY_LLM_KEY` | _(none)_ | Lightweight model for simple agent operations (classification, short prompts) |
+| `LLM_API_KEY` | _(none)_ | Generic API key for custom or OpenAI-compatible model configs |
+
+**Supported `LLM_KEY` values** (common options):
+
+| Value | Provider | Model |
+|---|---|---|
+| `OPENAI_GPT4O` | OpenAI | GPT-4o |
+| `OPENAI_GPT4O_MINI` | OpenAI | GPT-4o mini |
+| `ANTHROPIC_CLAUDE3.5_SONNET` | Anthropic | Claude 3.5 Sonnet |
+| `ANTHROPIC_CLAUDE3_OPUS` | Anthropic | Claude 3 Opus |
+| `GEMINI_FLASH` | Google | Gemini Flash |
+| `AZURE_OPENAI` | Azure | Configured Azure OpenAI deployment |
+
+### Provider activation flags
+
+Set the `ENABLE_*` flag to `true` for your provider, then supply the API key.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_OPENAI` | `false` | Enable OpenAI provider |
+| `ENABLE_ANTHROPIC` | `false` | Enable Anthropic provider |
+| `ENABLE_GEMINI` | `false` | Enable Google Gemini provider |
+| `ENABLE_AZURE` | `false` | Enable Azure OpenAI provider |
+| `ENABLE_BEDROCK` | `false` | Enable AWS Bedrock provider |
+| `ENABLE_VERTEX_AI` | `false` | Enable Google Vertex AI provider |
+| `ENABLE_VOLCENGINE` | `false` | Enable Volcengine (Doubao/UI-TARS) provider |
+| `ENABLE_OLLAMA` | `false` | Enable Ollama for local models |
+| `ENABLE_OPENAI_COMPATIBLE` | `false` | Enable any OpenAI-compatible API endpoint |
+
+### Provider API keys
+
+| Variable | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI API key (required when `ENABLE_OPENAI=true`) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (required when `ENABLE_ANTHROPIC=true`) |
+| `GEMINI_API_KEY` | Google Gemini API key (required when `ENABLE_GEMINI=true`) |
+| `VOLCENGINE_API_KEY` | Doubao API key for UI-TARS engine (required when `ENABLE_VOLCENGINE=true`) |
+
+### Azure OpenAI
+
+| Variable | Default | Description |
+|---|---|---|
+| `AZURE_DEPLOYMENT` | _(none)_ | Azure deployment name |
+| `AZURE_API_KEY` | _(none)_ | Azure OpenAI API key |
+| `AZURE_API_BASE` | _(none)_ | Azure endpoint URL |
+| `AZURE_API_VERSION` | _(none)_ | Azure API version string |
+
+### OpenAI-compatible endpoints (Ollama, LiteLLM, etc.)
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_COMPATIBLE_API_BASE` | _(none)_ | Base URL of the compatible API (e.g. `http://localhost:11434/v1`) |
+| `OPENAI_COMPATIBLE_MODEL_NAME` | _(none)_ | Model name to pass to the API |
+| `OPENAI_COMPATIBLE_API_KEY` | _(none)_ | API key (use any string for Ollama) |
+| `OPENAI_COMPATIBLE_SUPPORTS_VISION` | `false` | Whether the model supports vision/image inputs |
+
+---
+
+## Browser
+
+| Variable | Default | Description |
+|---|---|---|
+| `BROWSER_TYPE` | `chromium-headful` | Browser launch mode. Options: `chromium-headful` (visible window), `chromium-headless` (no window), `cdp-connect` (attach to existing browser) |
+| `BROWSER_REMOTE_DEBUGGING_URL` | `http://127.0.0.1:9222` | CDP URL when `BROWSER_TYPE=cdp-connect` |
+| `CHROME_EXECUTABLE_PATH` | _(none)_ | Path to a specific Chrome/Chromium binary. When set with `BROWSER_TYPE=cdp-connect`, Skyvern launches this binary |
+| `MAX_STEPS_PER_RUN` | `10` | Maximum steps a task can take before failing. Higher values allow more complex tasks but increase cost |
+| `BROWSER_ACTION_TIMEOUT_MS` | `5000` | Timeout for individual element interactions (click, fill, etc.) in milliseconds |
+| `BROWSER_LOADING_TIMEOUT_MS` | `60000` | Page load timeout in milliseconds |
+| `BROWSER_SCREENSHOT_TIMEOUT_MS` | `20000` | Screenshot capture timeout in milliseconds |
+| `BROWSER_WIDTH` | `1920` | Browser viewport width in pixels |
+| `BROWSER_HEIGHT` | `1080` | Browser viewport height in pixels |
+| `BROWSER_TIMEZONE` | `America/New_York` | Browser timezone (affects JavaScript `Date` and locale-sensitive sites) |
+| `BROWSER_LOCALE` | _(system default)_ | Browser locale string (e.g. `en-US`, `de-DE`). Null uses the system locale |
+
+**Use your own Chrome browser:**
+```bash
+BROWSER_TYPE=cdp-connect
+CHROME_EXECUTABLE_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+```
+
+---
+
+## Storage (artifacts)
+
+Skyvern stores screenshots, HAR files, and other artifacts from task runs.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SKYVERN_STORAGE_TYPE` | `local` | Storage backend. Options: `local`, `s3cloud`, `azureblob` |
+| `ARTIFACT_STORAGE_PATH` | `skyvern/artifacts` | Local filesystem path for artifacts (used when `SKYVERN_STORAGE_TYPE=local`) |
+
+### S3 storage (`SKYVERN_STORAGE_TYPE=s3cloud`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWS_REGION` | `us-east-1` | AWS region |
+| `AWS_S3_BUCKET_ARTIFACTS` | `skyvern-artifacts` | S3 bucket for artifacts (HAR, logs) |
+| `AWS_S3_BUCKET_SCREENSHOTS` | `skyvern-screenshots` | S3 bucket for screenshots |
+
+### Azure Blob Storage (`SKYVERN_STORAGE_TYPE=azureblob`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `AZURE_STORAGE_ACCOUNT_NAME` | _(none)_ | Azure storage account name |
+| `AZURE_STORAGE_ACCOUNT_KEY` | _(none)_ | Azure storage account key |
+| `AZURE_STORAGE_CONTAINER_ARTIFACTS` | `skyvern-artifacts` | Container for artifacts |
+| `AZURE_STORAGE_CONTAINER_SCREENSHOTS` | `skyvern-screenshots` | Container for screenshots |
+
+---
+
+## Proxy
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_PROXY` | `false` | Enable residential proxy routing |
+| `HOSTED_PROXY_POOL` | _(empty)_ | Comma-separated list of proxy URLs in the format `http://username:password@host:port` |
+
+---
+
+## Authentication
+
+| Variable | Default | Description |
+|---|---|---|
+| `SKYVERN_API_KEY` | `PLACEHOLDER` | API key for authenticating requests to your Skyvern instance. Set this to a secure value and use it in your SDK/API calls |
+| `SECRET_KEY` | `PLACEHOLDER` | JWT signing secret. Generate with `openssl rand -hex 32` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080` (1 week) | JWT token lifetime in minutes |
+
+---
+
+## Workflow settings
+
+| Variable | Default | Description |
+|---|---|---|
+| `WORKFLOW_WAIT_BLOCK_MAX_SEC` | `1800` | Maximum seconds a WaitBlock can pause a workflow (default 30 minutes) |
+| `WORKFLOW_TEMPLATING_STRICTNESS` | `lax` | Jinja template error handling: `strict` (raise on undefined) or `lax` (substitute empty string) |
+| `MAX_STEPS_PER_TASK_V2` | `25` | Step limit for the Skyvern 2.0 engine per iteration |
+| `MAX_ITERATIONS_PER_TASK_V2` | `10` | Iteration limit for the Skyvern 2.0 engine per task |
+
+---
+
+## Example `.env` for Docker Compose
+
+```bash
+# Database
+DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@postgres:5432/skyvern
+
+# Server
+ENV=prod
+SECRET_KEY=change-me-use-openssl-rand-hex-32
+SKYVERN_API_KEY=my-secure-local-api-key
+ALLOWED_ORIGINS=["https://your-domain.com"]
+
+# Browser
+BROWSER_TYPE=chromium-headful
+
+# LLM (choose one provider)
+ENABLE_OPENAI=true
+LLM_KEY=OPENAI_GPT4O
+OPENAI_API_KEY=sk-...
+
+# Logging
+LOG_LEVEL=INFO
+JSON_LOGGING=true
+
+# Storage
+SKYVERN_STORAGE_TYPE=s3cloud
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_ARTIFACTS=my-skyvern-artifacts
+AWS_S3_BUCKET_SCREENSHOTS=my-skyvern-screenshots
+```

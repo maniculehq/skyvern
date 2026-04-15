@@ -4,55 +4,270 @@ description: What are workflow blocks and how to use them
 slug: workflows/workflow-blocks-details
 ---
 
+Workflow blocks are the building blocks of Skyvern workflows. Each block performs a specific function; blocks run in sequence (or in loops) to achieve your automation goal.
+
 ## Navigation Block
-This block takes actions with a given navigation goal.
+
+Navigates through a website to accomplish a goal. The agent takes as many actions as needed (up to `max_steps`) to complete the navigation goal.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `navigation_goal` | string | Yes | Natural language goal for the navigation (e.g. "Search for running shoes and add the first result to cart") |
+| `url` | string | No | Starting URL. If omitted, continues from the current browser state |
+| `max_steps` | integer | No | Step limit for this block (overrides workflow default) |
+| `complete_if` | string | No | Jinja expression or natural language condition; block completes early when true |
+| `terminate_if` | string | No | Condition that terminates the workflow (marks as failed) |
+| `data_extraction_schema` | object | No | JSON Schema for data to extract at the end of navigation |
+| `error_code_mapping` | object | No | Map error conditions to custom error codes |
 
 ## Action Block
-Similar to the navigation block, but this block takes ONLY one action.
+
+Like the Navigation Block but takes **only one action** and stops. Use this when you need precise, atomic control over a single browser interaction.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action_type` | string | Yes | The action to perform (e.g. Click, InputText, SelectOption) |
+| `element_id` | string | No | Element identifier to target |
+| `value` | string | No | Value to input (for InputText, SelectOption) |
 
 ## Extract Block
-This block extracts information from the website. You can define the data extraction schema with this block. No other actions will be taken.
+
+Extracts structured data from the current page without taking any navigation actions.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `data_extraction_goal` | string | Yes | Description of what to extract |
+| `data_extraction_schema` | object | No | JSON Schema defining the structure of extracted data |
+
+Use this block when you want to capture information from a page that has already been navigated to.
 
 ## Login Block
-This block can support most password required login tasks in a website, integrated with [Skyvern Credentials](/credentials/introduction) to make sure your password is never sent to an LLM.
 
-When a website has uncommon login requirements, you should update the default prompt in the block to provide more instructions.
+Handles login flows with stored credentials. Skyvern never sends your password to the LLM — credentials are injected directly into the browser.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | No | Login page URL (navigates there first if provided) |
+| `credential_id` | string | No | ID of a Skyvern credential to use |
+| `credential_parameter_key` | string | No | Workflow parameter key holding a credential |
+| `navigation_goal` | string | No | Custom login instructions (useful for non-standard login flows) |
+| `max_steps` | integer | No | Step limit for the login flow |
+
+When a website has an unusual login flow (CAPTCHA, multi-step verification, custom username field), add a custom `navigation_goal` with additional instructions.
 
 ## Validation Block
-Like having an assertion in a test, this block validates the state of the workflow. It terminates the workflow if the validation fails. 
+
+Asserts the current workflow state. If the validation fails, the workflow is terminated with a failure status — like an assertion in a test.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `validation_goal` | string | Yes | What to validate (e.g. "The order confirmation page is displayed and the order ID is visible") |
+| `error_code_mapping` | object | No | Map validation failures to specific error codes |
 
 ## Task Block
-This block navigates through the websites to take actions and/or extract information.
+
+The general-purpose block that combines navigation, data extraction, and validation. Use the Navigation Block for pure navigation and the Extract Block for pure extraction when you want cleaner separation of concerns.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | No | Starting URL for the task |
+| `navigation_goal` | string | No | Goal for browser navigation |
+| `data_extraction_goal` | string | No | What data to extract |
+| `data_extraction_schema` | object | No | JSON Schema for extracted data |
+| `complete_criterion` | string | No | Condition to complete the block early |
+| `terminate_criterion` | string | No | Condition to terminate the workflow |
+| `max_steps` | integer | No | Step limit |
+| `error_code_mapping` | object | No | Custom error code mapping |
 
 ## ForLoopBlock
-This block supports loop in the workflow.
+
+Iterates over a list, running a set of child blocks once per item.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `loop_over` | parameter reference | Yes | The list parameter to iterate over |
+| `loop_blocks` | block list | Yes | Blocks to run for each iteration |
+
+**Reserved variables inside a for loop:**
+
+| Variable | Description |
+|---|---|
+| `{{current_value}}` | The current item in the list |
+| `{{current_item}}` | Alias for `{{current_value}}` |
+| `{{current_index}}` | Zero-based index of the current iteration |
+
+```python
+# Example: iterate over a list of URLs
+parameters:
+  - key: urls
+    parameter_type: workflow
+    default_value: ["https://example.com/page1", "https://example.com/page2"]
+
+blocks:
+  - block_type: for_loop
+    label: process_each_url
+    loop_over:
+      parameter_type: workflow_parameter
+      key: urls
+    loop_blocks:
+      - block_type: navigation
+        navigation_goal: "Extract the page title from {{current_value}}"
+        url: "{{current_value}}"
+```
+
+## TaskV2Block (NavigationV2Block)
+
+The advanced version of the Navigation Block powered by the **Skyvern 2.0** engine. Designed for complex, multi-page tasks with high accuracy requirements.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | No | Starting URL |
+| `navigation_goal` | string | Yes | Complex goal for the agent |
+| `max_iterations` | integer | No | Overrides `MAX_ITERATIONS_PER_TASK_V2` (default 10) |
+| `max_steps_per_iteration` | integer | No | Step limit per iteration |
+
+Use this block when `skyvern-2.0` accuracy is needed within a workflow.
 
 ## Url Block
-This block navigates to a given URL.
+
+Navigates the browser to a specific URL. Equivalent to a `goto` in code.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | Yes | URL to navigate to (supports Jinja parameter references) |
 
 ## Code Block
-This block allows you to write any custom python and playwright script to interact with the browser. For Skyvern Cloud, it's an invite only feature.
+
+Runs arbitrary Python and Playwright code in the browser context. Available to all self-hosted deployments; **invite-only on Skyvern Cloud** (contact support@skyvern.com).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `code` | string | Yes | Python code using `page` (Playwright page) and `context` (workflow context) |
+
+The code block receives:
+- `page`: a `SkyvernBrowserPage` (Playwright `Page` extension with AI methods)
+- `context`: `WorkflowRunContext` with `parameters` dict and output storage
+
+```python
+# Example: access a workflow parameter and do custom scraping
+title = await page.title()
+context.output["page_title"] = title
+```
 
 ## TextPromptBlock
-This block is a text only prompt block.
+
+Sends a text-only prompt to the LLM and stores the response as block output. No browser interaction occurs.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `llm_key` | string | No | Override the model for this block |
+| `prompt` | string | Yes | Prompt to send to the LLM (supports Jinja) |
+| `json_schema` | object | No | JSON Schema to structure the LLM response |
+
+Use this block to transform data between steps (e.g. reformat a scraped address, summarize text).
+
+## ConditionalBlock
+
+Branches the workflow based on a condition. Evaluates the condition and runs either the `true_block` or `false_block`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `condition` | string or object | Yes | A `JinjaBranchCriteria` expression or `PromptBranchCriteria` natural language condition |
+| `true_block` | block | No | Block to run if condition is true |
+| `false_block` | block | No | Block to run if condition is false |
+
+**Condition types:**
+- **Jinja expression** (`JinjaBranchCriteria`): evaluated as a Python boolean expression with Jinja template rendering. Example: `{{ items | length > 0 }}`
+- **Natural language** (`PromptBranchCriteria`): the LLM evaluates a natural language question against the current context. Example: `"Did the previous extraction find any results?"`
+
+## HttpRequestBlock
+
+Makes an HTTP request from the workflow (server-side, not the browser).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `method` | string | Yes | HTTP method (GET, POST, PUT, PATCH, DELETE) |
+| `url` | string | Yes | Request URL (supports Jinja) |
+| `headers` | object | No | Request headers as key-value pairs |
+| `body` | object or string | No | Request body (JSON object or string; supports Jinja) |
+| `timeout` | integer | No | Request timeout in seconds |
+
+The response is stored as block output and can be referenced by later blocks via `{{block_name}}`.
 
 ## SendEmailBlock
-This block sends an email.
 
-## FileDownloadBlock
-This block downloads a file from the website.
+Sends an email via SMTP.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `smtp_host` | string | Yes | SMTP server hostname |
+| `smtp_port` | integer | Yes | SMTP port (e.g. 587) |
+| `sender` | string | Yes | Sender email address |
+| `recipients` | list | Yes | List of recipient email addresses |
+| `subject` | string | Yes | Email subject (supports Jinja) |
+| `body` | string | Yes | Email body (supports Jinja) |
+| `smtp_username` | string | No | SMTP username |
+| `smtp_password` | string | No | SMTP password |
+| `attachments` | list | No | Attachment file paths or download URLs |
 
 ## FileParserBlock
-This block parses PDFs, CSVs, and Excel files from the website.
 
-## PDFParserBlock
-This block parses a PDF file from the website.
+Parses PDFs, CSVs, and Excel files. Returns structured data from the file.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `file_url` | string | Yes | URL of the file to parse (supports Jinja for dynamic file URLs from previous blocks) |
+| `file_type` | string | No | `pdf`, `csv`, or `xlsx`. Auto-detected from URL if omitted |
+
+## DownloadToS3Block / UploadToS3Block
+
+Transfers files between the browser/workflow and AWS S3.
+
+**DownloadToS3Block** — downloads a file from a URL and uploads it to S3.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | Yes | File URL to download |
+| `s3_bucket` | string | Yes | Destination S3 bucket |
+| `s3_key` | string | Yes | Destination S3 object key (supports Jinja) |
+
+**UploadToS3Block** — uploads a file that was downloaded during the workflow to S3.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `s3_bucket` | string | Yes | Destination S3 bucket |
 
 ## FileUploadBlock
-This block uploads all the downloaded files to a desired destination. Currently only AWS S3 is supported. Please contact support@skyvern.com if you need more integrations.
+
+Uploads downloaded files to a web form's file upload field.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `file_url` | string | Yes | URL of the file to upload |
+| `navigation_goal` | string | Yes | Instructions for locating the upload field and submitting |
 
 ## WaitBlock
-This block waits for a given amount of time.
 
-## NavigationV2Block (TaskV2Block)
-The advanced version of the NavigationBlock, powered by the Skyvern 2.0 engine. Designed for complicated goals.
+Pauses the workflow for a fixed time.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `wait_sec` | integer | Yes | Seconds to wait (max: `WORKFLOW_WAIT_BLOCK_MAX_SEC`, default cap 1800s) |
+
+## HumanInteractionBlock
+
+Pauses the workflow and waits for a human to take an action in the browser before continuing.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `navigation_goal` | string | No | Instructions shown to the human operator |
+
+## WorkflowTriggerBlock
+
+Triggers another workflow run from within the current workflow. Useful for composing workflows as sub-workflows.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `workflow_id` | string | Yes | ID of the workflow to trigger |
+| `parameters` | object | No | Parameters to pass to the triggered workflow |
+| `wait_for_completion` | boolean | No | Whether to wait for the triggered workflow to finish before continuing |

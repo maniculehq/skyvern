@@ -1,0 +1,204 @@
+---
+title: Self-Hosted Setup Guide
+description: Run Skyvern on your own infrastructure
+slug: self-hosted/overview
+---
+
+Skyvern can be run entirely on your own infrastructure. This guide covers two setup paths:
+
+- **pip install + SQLite** — zero-config, ideal for local development and single-user setups
+- **Docker Compose** — production-ready, includes PostgreSQL and persistent storage
+
+---
+
+## Requirements
+
+- Python 3.11 or later
+- Playwright browser dependencies (installed automatically)
+- Docker and Docker Compose (for the Docker Compose path)
+- An LLM provider API key (OpenAI, Anthropic, Gemini, or self-hosted via Ollama/LiteLLM)
+
+---
+
+## Option 1: pip install + SQLite (local development)
+
+This is the fastest way to get Skyvern running. It uses SQLite for storage — no database setup required.
+
+### Install
+
+```bash
+pip install skyvern
+```
+
+### First-time setup
+
+```bash
+skyvern quickstart
+```
+
+The quickstart command:
+1. Installs Playwright browser dependencies
+2. Prompts you to configure your LLM provider (OpenAI, Anthropic, Gemini, or custom)
+3. Creates a `.env` file with your settings, including `SKYVERN_API_KEY`
+4. Runs database migrations (creates `~/.skyvern/data.db`)
+5. Starts the Skyvern server
+
+### Start the service
+
+After the initial setup, use these commands to manage Skyvern:
+
+```bash
+# Start backend + UI
+skyvern run all
+
+# Start backend only
+skyvern run server
+
+# Start UI only
+skyvern run ui
+
+# Check status
+skyvern status
+
+# Stop everything
+skyvern stop all
+```
+
+### Access
+
+- **UI**: `http://localhost:5173` (after `skyvern run ui` or `skyvern run all`)
+- **API**: `http://localhost:8000`
+- **API key**: set in your `.env` file as `SKYVERN_API_KEY`
+
+Verify the service is running:
+
+```bash
+curl http://localhost:8000/health
+```
+
+---
+
+## Option 2: Docker Compose (production / team)
+
+Docker Compose runs Skyvern alongside a PostgreSQL database. This is the recommended path for team deployments, production use, and any setup that needs persistent storage beyond a single machine.
+
+### Services
+
+The `docker-compose.yml` defines two services:
+
+| Service | Image | Description |
+|---|---|---|
+| `postgres` | `postgres:14-alpine` | PostgreSQL database |
+| `skyvern` | Skyvern image | Backend API + browser automation |
+
+### Configure environment variables
+
+Copy the example env file and edit it:
+
+```bash
+cp .env.example .env
+```
+
+At minimum, set your LLM provider credentials. Choose one:
+
+**OpenAI:**
+```bash
+ENABLE_OPENAI=true
+LLM_KEY=OPENAI_GPT4O
+OPENAI_API_KEY=sk-...
+```
+
+**Anthropic:**
+```bash
+ENABLE_ANTHROPIC=true
+LLM_KEY=ANTHROPIC_CLAUDE3.5_SONNET
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Gemini:**
+```bash
+ENABLE_GEMINI=true
+LLM_KEY=GEMINI
+GEMINI_API_KEY=...
+```
+
+The full `.env` reference is in the [Configuration Reference](./configuration.mdx).
+
+### Start
+
+```bash
+docker compose up -d
+```
+
+### Ports
+
+| Port | Service | Description |
+|---|---|---|
+| `8000` | Skyvern API | REST API and WebSocket |
+| `6080` | VNC WebSocket | Live browser streaming (via noVNC) |
+| `9222` | CDP | Chrome DevTools Protocol |
+
+### Database migrations
+
+Migrations run automatically when the Skyvern container starts. To run them manually:
+
+```bash
+alembic upgrade head
+```
+
+### Verify
+
+```bash
+curl http://localhost:8000/health
+```
+
+---
+
+## Key environment variables (quick reference)
+
+| Variable | Description |
+|---|---|
+| `DATABASE_STRING` | Database URL. Default: `sqlite+aiosqlite:///$HOME/.skyvern/data.db`. For Docker Compose: `postgresql+psycopg://skyvern:skyvern@postgres:5432/skyvern` |
+| `BROWSER_TYPE` | `chromium-headful` (default), `chromium-headless`, or `cdp-connect` |
+| `LLM_KEY` | Which model to use (e.g. `OPENAI_GPT4O`, `ANTHROPIC_CLAUDE3.5_SONNET`) |
+| `SKYVERN_API_KEY` | API key for authenticating requests to your local Skyvern instance |
+| `SECRET_KEY` | JWT signing secret — generate a secure random value for production |
+
+See the full [Configuration Reference](./configuration.mdx) for all variables.
+
+---
+
+## Connect the Python SDK to your self-hosted instance
+
+```python
+from skyvern import Skyvern
+
+skyvern = Skyvern(
+    api_key="your-local-api-key",   # matches SKYVERN_API_KEY in .env
+    base_url="http://localhost:8000",
+)
+
+task = await skyvern.run_task(
+    "Find the top post on Hacker News",
+    wait_for_completion=True,
+)
+print(task.output)
+```
+
+---
+
+## Upgrading
+
+**pip install:**
+```bash
+pip install --upgrade skyvern
+alembic upgrade head
+```
+
+**Docker Compose:**
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Migrations run automatically on container start.

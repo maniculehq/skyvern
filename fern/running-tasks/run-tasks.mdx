@@ -26,6 +26,21 @@ This parameter defines the engine that powers the agent task.
 - `anthropic-cua`: uses Anthropic's Claude Sonnet 3.7 model with the computer use tool.
 - `ui-tars`: uses the UI-TARS model (Seed1.5-VL) via Doubao API for computer vision and GUI automation with multi-turn conversation support (https://seed.bytedance.com/zh/tech/seed1_5_vl).
 
+#### Engine Selection Guide
+
+| Engine | Best for | Speed | Benchmark | Provider required |
+|---|---|---|---|---|
+| `skyvern-2.0` | Complex multi-page tasks, dynamic UIs | Medium | 85.85% WebVoyager | Configured LLM (default) |
+| `skyvern-1.0` | Simple form fills, single-goal tasks | Fast | — | Configured LLM (default) |
+| `openai-cua` | Tasks needing OpenAI's computer use | Medium | — | `OPENAI_API_KEY` |
+| `anthropic-cua` | Tasks needing Claude's computer use | Medium | — | `ANTHROPIC_API_KEY` |
+| `ui-tars` | GUI-heavy visual tasks | Medium | — | Doubao API (`VOLCENGINE_API_KEY`) |
+
+**When to use each engine:**
+- Start with `skyvern-2.0` for most tasks — it handles complex flows and multi-step navigation.
+- Use `skyvern-1.0` for straightforward tasks like single form fills or searches where speed matters more than capability.
+- Use `openai-cua` or `anthropic-cua` if you have an existing provider contract and want that provider's native computer use model.
+- Use `ui-tars` for visually rich desktop-style web UIs where screenshot-based navigation outperforms DOM parsing.
 
 ### [Data Extraction Schema](/api-reference/api-reference/agent/run-task#request.body.data_extraction_schema)
 

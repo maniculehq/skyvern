@@ -1,0 +1,734 @@
+---
+title: Python SDK Reference
+description: Complete reference for the Skyvern Python SDK
+slug: sdk-reference/python-sdk
+---
+
+The Skyvern Python SDK lets you automate browser tasks from Python code. It provides three interaction patterns — traditional Playwright, pure AI, and a hybrid fallback mode — so you can choose the right level of AI involvement for each step.
+
+Install with:
+
+```bash
+pip install skyvern
+```
+
+---
+
+## Skyvern class
+
+`from skyvern import Skyvern`
+
+The top-level client. All API calls and browser operations start here.
+
+### Constructor
+
+```python
+Skyvern(
+    *,
+    api_key: str,
+    environment: SkyvernEnvironment = SkyvernEnvironment.CLOUD,
+    base_url: str | None = None,
+    timeout: float | None = None,
+    follow_redirects: bool | None = True,
+    httpx_client: httpx.AsyncClient | None = None,
+)
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `api_key` | `str` | Your Skyvern API key |
+| `environment` | `SkyvernEnvironment` | Target environment. `SkyvernEnvironment.CLOUD` (default) points to `https://api.skyvern.com`; use `SkyvernEnvironment.LOCAL` or `base_url` for self-hosted |
+| `base_url` | `str | None` | Override the API base URL (e.g. `http://localhost:8000` for local) |
+| `timeout` | `float | None` | Default HTTP request timeout in seconds |
+| `follow_redirects` | `bool | None` | Follow HTTP redirects (default `True`) |
+| `httpx_client` | `httpx.AsyncClient | None` | Bring your own httpx client for custom transport, proxies, etc. |
+
+**Basic usage:**
+
+```python
+import asyncio
+from skyvern import Skyvern
+
+skyvern = Skyvern(api_key="your-api-key")
+
+async def main():
+    task = await skyvern.run_task(
+        "Find the top post on Hacker News today",
+        wait_for_completion=True,
+    )
+    print(task.output)
+
+asyncio.run(main())
+```
+
+**Self-hosted usage:**
+
+```python
+skyvern = Skyvern(
+    api_key="your-local-key",
+    base_url="http://localhost:8000",
+)
+```
+
+---
+
+### `Skyvern.local()` classmethod
+
+```python
+@classmethod
+Skyvern.local(
+    *,
+    llm_config=None,
+    settings=None,
+    use_in_memory_db=None,
+) -> Skyvern
+```
+
+Creates a `Skyvern` instance that runs entirely in-process — no separate server needed. The agent, browser, and LLM all run embedded in your Python process. Useful for scripts, CI pipelines, and development without a running Skyvern service.
+
+```python
+from skyvern import Skyvern
+
+skyvern = Skyvern.local()
+
+async def main():
+    async with skyvern:
+        task = await skyvern.run_task(
+            "Search for 'python asyncio' on Google and return the first result title",
+            wait_for_completion=True,
+        )
+        print(task.output)
+```
+
+---
+
+### `run_task()`
+
+```python
+await skyvern.run_task(
+    prompt: str,
+    engine: RunEngine = RunEngine.skyvern_v1,
+    url: str | None = None,
+    webhook_url: str | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    title: str | None = None,
+    error_code_mapping: dict | None = None,
+    data_extraction_schema: dict | None = None,
+    proxy_location: str | ProxyLocation | None = None,
+    max_steps: int | None = None,
+    wait_for_completion: bool = False,
+    timeout: float = 300.0,
+    browser_session_id: str | None = None,
+    **kwargs,
+) -> TaskRunResponse
+```
+
+Runs a single task described in natural language.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `prompt` | `str` | Natural language description of the task |
+| `engine` | `RunEngine` | Agent engine to use (see Engine Selection Guide below) |
+| `url` | `str | None` | Starting URL. If omitted, the agent navigates from scratch |
+| `webhook_url` | `str | None` | URL to POST results to when the task completes |
+| `totp_identifier` | `str | None` | Identifier for TOTP 2FA codes stored in Skyvern |
+| `totp_url` | `str | None` | URL Skyvern fetches to get a TOTP code on demand |
+| `title` | `str | None` | Human-readable label for the task run |
+| `error_code_mapping` | `dict | None` | Map error conditions to custom error codes |
+| `data_extraction_schema` | `dict | None` | JSON Schema for structured data to extract |
+| `proxy_location` | `str | ProxyLocation | None` | Route through a residential proxy in a specific country/state |
+| `max_steps` | `int | None` | Step limit (overrides server default) |
+| `wait_for_completion` | `bool` | Block until the task finishes (default `False`) |
+| `timeout` | `float` | Seconds to wait when `wait_for_completion=True` (default 300) |
+| `browser_session_id` | `str | None` | Run the task in an existing persistent browser session |
+
+```python
+# With structured output
+task = await skyvern.run_task(
+    "Find the top post on Hacker News today",
+    url="https://news.ycombinator.com",
+    data_extraction_schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "url": {"type": "string"},
+            "points": {"type": "integer"},
+        },
+    },
+    wait_for_completion=True,
+)
+print(task.output)  # {"title": "...", "url": "...", "points": 123}
+```
+
+---
+
+### `run_workflow()`
+
+```python
+await skyvern.run_workflow(
+    workflow_id: str,
+    parameters: dict | None = None,
+    title: str | None = None,
+    webhook_url: str | None = None,
+    wait_for_completion: bool = False,
+    timeout: float = 300.0,
+    **kwargs,
+) -> WorkflowRunResponse
+```
+
+Triggers a saved workflow run.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `workflow_id` | `str` | ID of the workflow to run |
+| `parameters` | `dict | None` | Parameter values to pass to the workflow |
+| `title` | `str | None` | Human-readable label for this run |
+| `webhook_url` | `str | None` | URL to POST results to on completion |
+| `wait_for_completion` | `bool` | Block until the workflow finishes |
+| `timeout` | `float` | Seconds to wait (default 300) |
+
+```python
+run = await skyvern.run_workflow(
+    workflow_id="wf_abc123",
+    parameters={"search_query": "python asyncio"},
+    wait_for_completion=True,
+)
+print(run.output)
+```
+
+---
+
+### Browser management methods
+
+#### `launch_local_browser()`
+
+```python
+await skyvern.launch_local_browser(
+    *,
+    headless: bool = False,
+    port: int = 9222,
+    args: list[str] | None = None,
+    user_data_dir: str | None = None,
+) -> SkyvernBrowser
+```
+
+Launches a local Chromium browser and returns a `SkyvernBrowser`. Use this to drive your local browser with AI.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `headless` | `bool` | Run without a visible window (default `False`) |
+| `port` | `int` | CDP remote debugging port (default 9222) |
+| `args` | `list[str] | None` | Additional Chromium command-line arguments |
+| `user_data_dir` | `str | None` | Chrome profile directory |
+
+#### `launch_cloud_browser()`
+
+```python
+await skyvern.launch_cloud_browser(
+    *,
+    timeout: float | None = None,
+    proxy_location: str | None = None,
+) -> SkyvernBrowser
+```
+
+Launches a new browser session on Skyvern Cloud. Cloud-only; requires a cloud API key.
+
+#### `use_cloud_browser()`
+
+```python
+await skyvern.use_cloud_browser(
+    *,
+    timeout: float | None = None,
+    proxy_location: str | None = None,
+) -> SkyvernBrowser
+```
+
+Reuses an existing cloud browser session if one is active, or creates a new one. Useful when you want session continuity across multiple calls without manually tracking session IDs.
+
+#### `connect_to_browser_over_cdp()`
+
+```python
+await skyvern.connect_to_browser_over_cdp(cdp_url: str) -> SkyvernBrowser
+```
+
+Connects to an already-running browser via Chrome DevTools Protocol. Use this to attach to your own Chrome instance.
+
+```python
+browser = await skyvern.connect_to_browser_over_cdp("http://localhost:9222")
+```
+
+#### `connect_to_cloud_browser_session()`
+
+```python
+await skyvern.connect_to_cloud_browser_session(browser_session_id: str) -> SkyvernBrowser
+```
+
+Reconnects to a specific Skyvern Cloud browser session by ID.
+
+#### `aclose()`
+
+```python
+await skyvern.aclose()
+```
+
+Releases all resources (HTTP connections, browser connections). Call this when you are done, or use the client as an async context manager instead:
+
+```python
+async with Skyvern(api_key="...") as skyvern:
+    task = await skyvern.run_task("...")
+```
+
+---
+
+## SkyvernBrowser class
+
+A handle to a running browser. Obtain one from the `launch_*` or `connect_*` methods on `Skyvern`.
+
+### `get_working_page()`
+
+```python
+page: SkyvernBrowserPage = await browser.get_working_page()
+```
+
+Returns the active page. Most SDK work happens through the `SkyvernBrowserPage` object.
+
+---
+
+## SkyvernBrowserPage class
+
+`SkyvernBrowserPage` extends Playwright's `Page` class — all standard Playwright methods (`goto`, `screenshot`, `evaluate`, etc.) work as-is. The SDK adds AI-powered methods on top.
+
+### AI action methods
+
+#### `act()`
+
+```python
+await page.act(
+    prompt: str,
+    skip_refresh: bool = False,
+    use_economy_tree: bool = False,
+) -> None
+```
+
+Instructs the AI agent to take an action described in natural language. The agent analyzes the current page screenshot and DOM, determines the appropriate action(s), and executes them.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `prompt` | `str` | Natural language description of the action to take |
+| `skip_refresh` | `bool` | Skip re-capturing the page state before acting |
+| `use_economy_tree` | `bool` | Use a lighter-weight DOM tree (faster, less accurate) |
+
+```python
+await page.goto("https://example.com/login")
+await page.act("Click the Sign In button")
+await page.act("Fill in the email field with user@example.com")
+```
+
+#### `extract()`
+
+```python
+await page.extract(
+    prompt: str,
+    schema: dict | None = None,
+    error_code_mapping: dict | None = None,
+) -> dict | list | str | None
+```
+
+Extracts data from the current page using AI. Optionally provide a JSON Schema to enforce a specific output shape.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `prompt` | `str` | Description of what to extract |
+| `schema` | `dict | None` | JSON Schema for the extracted data |
+| `error_code_mapping` | `dict | None` | Map error conditions to custom codes |
+
+```python
+data = await page.extract(
+    "Extract the product name, price, and availability",
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "price": {"type": "number"},
+            "in_stock": {"type": "boolean"},
+        },
+    },
+)
+print(data)  # {"name": "Widget", "price": 29.99, "in_stock": True}
+```
+
+#### `validate()`
+
+```python
+await page.validate(
+    prompt: str,
+    model: str | None = None,
+) -> bool
+```
+
+Uses the AI to assert a condition about the current page state. Returns `True` if the condition is met, `False` otherwise.
+
+```python
+is_logged_in = await page.validate("The user is logged in and the dashboard is visible")
+if not is_logged_in:
+    raise RuntimeError("Login failed")
+```
+
+#### `prompt()`
+
+```python
+await page.prompt(
+    prompt: str,
+    schema: dict | None = None,
+    model: str | None = None,
+) -> dict | list | str | None
+```
+
+Makes an arbitrary LLM call in the context of the current page. Unlike `extract()`, this is a general-purpose LLM call — use it for reasoning, summarization, or any task that benefits from the current page context.
+
+---
+
+### AI-augmented Playwright methods
+
+These methods extend standard Playwright interactions with an optional AI fallback. They are drop-in replacements for the Playwright equivalents.
+
+#### `click()`
+
+```python
+await page.click(
+    selector: str | None = None,
+    *,
+    prompt: str | None = None,
+    ai: str = "fallback",
+    mode: str | None = None,
+    **kwargs,
+) -> None
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `selector` | `str | None` | CSS/XPath selector (standard Playwright) |
+| `prompt` | `str | None` | Natural language description of the element to click |
+| `ai` | `str` | AI behavior: `"fallback"` (try selector first, then AI), `"proactive"` (AI directly), `"off"` (no AI) |
+| `mode` | `str | None` | Click mode override |
+
+#### `fill()`
+
+```python
+await page.fill(
+    selector: str | None = None,
+    value: str | None = None,
+    *,
+    prompt: str | None = None,
+    ai: str = "fallback",
+    mode: str | None = None,
+    totp_identifier: str | None = None,
+    totp_url: str | None = None,
+    **kwargs,
+) -> str
+```
+
+Fills a form field. Returns the value that was entered (useful when the AI chooses the value from a `prompt`).
+
+| Parameter | Type | Description |
+|---|---|---|
+| `selector` | `str | None` | CSS/XPath selector |
+| `value` | `str | None` | Value to fill in |
+| `prompt` | `str | None` | Natural language description of what/where to fill |
+| `ai` | `str` | AI mode: `"fallback"` or `"proactive"` |
+| `totp_identifier` | `str | None` | TOTP identifier for 2FA fields |
+| `totp_url` | `str | None` | URL to fetch TOTP codes from |
+
+#### `fill_autocomplete()`
+
+```python
+await page.fill_autocomplete(
+    selector: str | None = None,
+    value: str | None = None,
+    *,
+    prompt: str | None = None,
+    ai: str = "fallback",
+    **kwargs,
+) -> None
+```
+
+Fills a field that has an autocomplete dropdown — types the value and selects from the suggestions. Use this instead of `fill()` when the field triggers a dropdown (e.g. address autocomplete, search-as-you-type).
+
+---
+
+### Frame navigation methods
+
+#### `frame_switch()`
+
+```python
+await page.frame_switch(
+    *,
+    selector: str | None = None,
+    name: str | None = None,
+    index: int | None = None,
+) -> None
+```
+
+Switches the page context to an iframe. Provide exactly one of `selector`, `name`, or `index`.
+
+```python
+# Switch by CSS selector
+await page.frame_switch(selector="iframe#payment-frame")
+
+# Switch by frame name attribute
+await page.frame_switch(name="payment")
+
+# Switch by index (0-based)
+await page.frame_switch(index=0)
+```
+
+#### `frame_main()`
+
+```python
+page.frame_main() -> None
+```
+
+Switches back to the main (top-level) frame from within an iframe.
+
+#### `frame_list()`
+
+```python
+frames = await page.frame_list() -> list[dict]
+```
+
+Returns a list of all frames in the current page. Each entry has:
+- `index` — zero-based position
+- `name` — frame name attribute (may be empty)
+- `url` — the frame's current URL
+- `is_main` — `True` for the top-level frame
+
+---
+
+### `page.agent`
+
+Returns a `SkyvernBrowserPageAgent` instance for running full agent tasks in the context of the current browser session.
+
+---
+
+## SkyvernBrowserPageAgent class
+
+Access via `page.agent`. Runs structured agent tasks (tasks, workflows, logins, downloads) using the current browser's live state.
+
+### `run_task()`
+
+```python
+await page.agent.run_task(
+    prompt: str,
+    engine: RunEngine = RunEngine.skyvern_v1,
+    url: str | None = None,
+    data_extraction_schema: dict | None = None,
+    max_steps: int | None = None,
+    timeout: float = 300.0,
+    **kwargs,
+) -> TaskRunResponse
+```
+
+Runs a full agent task in the context of this browser session. Unlike `Skyvern.run_task()`, this uses the page's current browser state as the starting point.
+
+### `login()`
+
+```python
+await page.agent.login(
+    *,
+    credential_type: CredentialType = CredentialType.skyvern,
+    credential_id: str | None = None,
+    url: str | None = None,
+    prompt: str | None = None,
+    timeout: float = 300.0,
+    **kwargs,
+) -> WorkflowRunResponse
+```
+
+Runs a login workflow using stored credentials. Credentials are injected directly into the browser — they are never sent to the LLM.
+
+| `credential_type` value | Description |
+|---|---|
+| `CredentialType.skyvern` | Use credentials stored in Skyvern |
+| `CredentialType.bitwarden` | Use credentials from Bitwarden |
+| `CredentialType.onepassword` | Use credentials from 1Password |
+| `CredentialType.azure_vault` | Use credentials from Azure Key Vault |
+
+```python
+await page.goto("https://app.example.com/login")
+result = await page.agent.login(
+    credential_type=CredentialType.skyvern,
+    credential_id="cred_abc123",
+)
+```
+
+### `download_files()`
+
+```python
+await page.agent.download_files(
+    prompt: str,
+    *,
+    url: str | None = None,
+    download_suffix: str | None = None,
+    max_steps_per_run: int | None = None,
+    timeout: float = 300.0,
+    **kwargs,
+) -> WorkflowRunResponse
+```
+
+Navigates the page to locate and download files matching the prompt description.
+
+### `run_workflow()`
+
+```python
+await page.agent.run_workflow(
+    workflow_id: str,
+    parameters: dict | None = None,
+    title: str | None = None,
+    webhook_url: str | None = None,
+    timeout: float = 300.0,
+    **kwargs,
+) -> WorkflowRunResponse
+```
+
+Triggers a saved workflow in the context of the current browser session.
+
+---
+
+## Interaction patterns
+
+The SDK supports three distinct ways to interact with a browser. Use whichever fits your task.
+
+### 1. Traditional Playwright (no AI)
+
+Pure Playwright — no AI involved. Best when you know the page structure and want deterministic, fast execution.
+
+```python
+await page.goto("https://example.com/login")
+await page.fill("#email", "user@example.com")
+await page.fill("#password", "secret")
+await page.click("#submit-btn")
+await page.wait_for_url("**/dashboard")
+```
+
+### 2. Pure AI
+
+Let the agent handle everything. Best for complex flows, dynamic UIs, or when the page structure changes frequently.
+
+```python
+await page.goto("https://example.com/login")
+await page.act("Log in with email user@example.com and password secret")
+
+# Or use the full agent:
+result = await page.agent.run_task(
+    "Log in and navigate to the billing settings page"
+)
+```
+
+### 3. Hybrid fallback (default)
+
+Pass both a selector and a `prompt`. The SDK tries the selector first; if it fails (element not found, not interactable), it falls back to AI using the prompt. This gives you the speed of direct selectors with the resilience of AI.
+
+```python
+await page.goto("https://example.com/login")
+
+# Tries #email selector first, falls back to AI if it fails
+await page.fill("#email", "user@example.com", prompt="Fill the email field")
+
+# Tries #submit selector, falls back to AI
+await page.click("#submit", prompt="Click the login button")
+
+# Force AI directly (skip selector attempt)
+await page.click(prompt="Click the Sign In button", ai="proactive")
+```
+
+---
+
+## End-to-end example
+
+This example demonstrates all three patterns together: using Playwright for navigation, AI for a complex extraction, and hybrid mode for form interaction.
+
+```python
+import asyncio
+from skyvern import Skyvern
+
+async def scrape_and_submit():
+    skyvern = Skyvern(api_key="your-api-key")
+
+    async with skyvern:
+        # Launch a local browser
+        browser = await skyvern.launch_local_browser()
+        page = await browser.get_working_page()
+
+        # --- Pattern 1: Pure Playwright ---
+        await page.goto("https://news.ycombinator.com")
+
+        # --- Pattern 2: Pure AI extraction ---
+        top_story = await page.extract(
+            "Extract the title and URL of the #1 ranked story",
+            schema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "url": {"type": "string"},
+                },
+                "required": ["title", "url"],
+            },
+        )
+        print(f"Top story: {top_story['title']}")
+
+        # Navigate to a form page
+        await page.goto("https://httpbin.org/forms/post")
+
+        # --- Pattern 3: Hybrid fallback ---
+        # Tries the CSS selector, falls back to AI prompt if not found
+        await page.fill(
+            "input[name='custname']",
+            "Jane Doe",
+            prompt="Fill in the customer name field",
+        )
+        await page.fill(
+            "input[name='custemail']",
+            "jane@example.com",
+            prompt="Fill the email field",
+        )
+
+        # AI-only click for a submit button that might change its selector
+        await page.click(prompt="Submit the form", ai="proactive")
+
+        # --- AI validation ---
+        submitted = await page.validate("The form was submitted successfully")
+        print(f"Form submitted: {submitted}")
+
+        return top_story
+
+result = asyncio.run(scrape_and_submit())
+```
+
+---
+
+## Engine selection guide
+
+Pass the `engine` parameter to `run_task()` or `page.agent.run_task()` to choose the agent model.
+
+| Engine | Best for | Speed | Benchmark | Provider required |
+|---|---|---|---|---|
+| `skyvern-2.0` | Complex multi-page tasks, dynamic UIs | Medium | 85.85% WebVoyager | Configured LLM (default) |
+| `skyvern-1.0` | Simple form fills, single-goal tasks | Fast | — | Configured LLM (default) |
+| `openai-cua` | Tasks needing OpenAI's computer use | Medium | — | `OPENAI_API_KEY` |
+| `anthropic-cua` | Tasks needing Claude's computer use | Medium | — | `ANTHROPIC_API_KEY` |
+| `ui-tars` | GUI-heavy visual tasks | Medium | — | Doubao API (`VOLCENGINE_API_KEY`) |
+
+```python
+from skyvern import Skyvern
+from skyvern.enums import RunEngine
+
+skyvern = Skyvern(api_key="your-api-key")
+
+# Use skyvern-2.0 for complex tasks (default)
+task = await skyvern.run_task(
+    "Find the cheapest round-trip flight from NYC to London in June",
+    engine=RunEngine.skyvern_v2,
+    wait_for_completion=True,
+)
+```
