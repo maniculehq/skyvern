@@ -24,19 +24,25 @@ Skyvern exposes three distinct Python SDK surfaces and one TypeScript SDK. Use t
 |---------|--------|----------|
 | **REST client** (`skyvern.client`) | `from skyvern.client import Skyvern` | Integrating Skyvern Cloud into any Python application. Wraps all REST endpoints in typed async methods. Auto-generated from the OpenAPI spec. |
 | **Library SDK** (`skyvern.library`) | `from skyvern import Skyvern` | Playwright-style embedded automation. Boots Skyvern locally (`Skyvern.local()`) or connects to Cloud. Supports `page.goto()`, `page.agent.run_task()`, and direct browser control. |
-| **Script functions** (`skyvern` top-level) | `from skyvern import run_task, extract, loop, ...` | Writing `@workflow`-decorated scripts. These async functions map directly to workflow blocks and are used inside the Adaptive Caching scripting layer. |
-| **TypeScript SDK** (`@skyvern/client`) | `import { SkyvernClient } from "@skyvern/client"` | Node.js, Vercel, Cloudflare Workers, Deno, or Bun applications. Mirrors the Python REST client API surface. |
+| **Script functions** (`skyvern` top-level) | `from skyvern import run_task, extract, loop, ...` | Writing [`@workflow`-decorated scripts](/sdk-reference/caching). These async functions map directly to [workflow blocks](/multi-step-automations/workflow-blocks-reference) and are used inside the Adaptive Caching scripting layer. See the [Script Functions reference](/sdk-reference/script-functions). |
+| **TypeScript SDK** (`@skyvern/client`) | `import { SkyvernClient } from "@skyvern/client"` | Node.js, Vercel, Cloudflare Workers, Deno, or Bun applications. Mirrors the Python REST client API surface. See the [TypeScript SDK reference](/ts-sdk-reference/overview). |
 
 ### Decision guide
 
 ```
 Do you need browser automation (clicks, forms, downloads)?
-├── Yes, in Python with Playwright-style page control → skyvern.library (Skyvern.local() or Skyvern(api_key=...))
-├── Yes, inside a @workflow script using block functions → skyvern top-level (run_task, extract, loop, ...)
+├── Yes, in Python with Playwright-style page control
+│   → skyvern.library  →  Skyvern.local()  or  Skyvern(api_key=...)
+├── Yes, inside a @workflow script using block functions
+│   → skyvern top-level  →  run_task, extract, loop, ...  (see Script Functions)
 └── No, I just need to trigger runs and read results via REST:
-    ├── Python → skyvern.client (Skyvern)
-    └── TypeScript/JS → @skyvern/client (SkyvernClient)
+    ├── Python      → skyvern.client  →  Skyvern
+    └── TypeScript  → @skyvern/client  →  SkyvernClient
 ```
+
+<Tip>
+Writing scripts with `@workflow` also unlocks [Adaptive Caching](/sdk-reference/caching) — Skyvern learns from successful runs and replaces AI calls with fast cached Python functions on future runs.
+</Tip>
 
 ---
 
