@@ -91,6 +91,7 @@ Skyvern.local(
 Creates a `Skyvern` instance that runs entirely in-process — no separate server needed. The agent, browser, and LLM all run embedded in your Python process. Useful for scripts, CI pipelines, and development without a running Skyvern service.
 
 ```python
+import asyncio
 from skyvern import Skyvern
 
 skyvern = Skyvern.local()
@@ -102,6 +103,8 @@ async def main():
             wait_for_completion=True,
         )
         print(task.output)
+
+asyncio.run(main())
 ```
 
 <Tip>

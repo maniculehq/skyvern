@@ -122,7 +122,7 @@ LLM_KEY=GEMINI_FLASH
 GEMINI_API_KEY=...
 ```
 
-The full `.env` reference is in the [Configuration Reference](./configuration.mdx).
+The full `.env` reference is in the [Configuration Reference](/self-hosted/configuration).
 
 ### Start
 
@@ -164,13 +164,14 @@ curl http://localhost:8000/health
 | `SKYVERN_API_KEY` | API key for authenticating requests to your local Skyvern instance |
 | `SECRET_KEY` | JWT signing secret — generate a secure random value for production |
 
-See the full [Configuration Reference](./configuration.mdx) for all variables.
+See the full [Configuration Reference](/self-hosted/configuration) for all variables.
 
 ---
 
 ## Connect the Python SDK to your self-hosted instance
 
 ```python
+import asyncio
 from skyvern import Skyvern
 
 skyvern = Skyvern(
@@ -178,11 +179,14 @@ skyvern = Skyvern(
     base_url="http://localhost:8000",
 )
 
-task = await skyvern.run_task(
-    "Find the top post on Hacker News",
-    wait_for_completion=True,
-)
-print(task.output)
+async def main():
+    task = await skyvern.run_task(
+        "Find the top post on Hacker News",
+        wait_for_completion=True,
+    )
+    print(task.output)
+
+asyncio.run(main())
 ```
 
 ---
