@@ -84,15 +84,19 @@ Run Skyvern entirely on your machine — no cloud, no network calls. `Skyvern.lo
 **Prerequisite:** Run `skyvern quickstart` once to create the `.env` file with your database connection and LLM API keys.
 
 ```python
+import asyncio
 from skyvern import Skyvern
 
-client = Skyvern.local()
+async def main():
+    client = Skyvern.local()
+    result = await client.run_task(
+        prompt="Get the title of the top post",
+        url="https://news.ycombinator.com",
+        wait_for_completion=True,
+    )
+    print(result.output)
 
-result = await client.run_task(
-    prompt="Get the title of the top post",
-    url="https://news.ycombinator.com",
-    wait_for_completion=True,
-)
+asyncio.run(main())
 ```
 
 If you configured headful mode during `skyvern quickstart`, a Chromium window opens on your machine so you can watch the AI work.

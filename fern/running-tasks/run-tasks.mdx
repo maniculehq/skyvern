@@ -55,7 +55,7 @@ For example:
 ```json
 [
     {"login_failed": "The login credentials are incorrect or the account is locked"},
-    {"maintenance_mode": "The website is down for maintenance"},
+    {"maintenance_mode": "The website is down for maintenance"}
 ]
 ```
 With this mapping, if Skyvern encounters a login failure, the task output will show `{"error": "login_failed"}`, which makes it easy to codify error handling.
