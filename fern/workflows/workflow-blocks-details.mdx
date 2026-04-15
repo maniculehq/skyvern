@@ -10,16 +10,16 @@ Blocks are assembled in the [Workflow Editor](/workflows/manage-workflows). Para
 
 ## Navigation Block
 
-Navigates through a website to accomplish a goal. The agent takes as many actions as needed (up to `max_steps`) to complete the navigation goal.
+Navigates through a website to accomplish a goal. The agent takes as many actions as needed (up to `max_steps_per_run`) to complete the navigation goal.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `navigation_goal` | string | Yes | Natural language goal for the navigation (e.g. "Search for running shoes and add the first result to cart") |
 | `url` | string | No | Starting URL. If omitted, continues from the current browser state |
-| `max_steps` | integer | No | Step limit for this block (overrides workflow default) |
-| `complete_if` | string | No | Jinja expression or natural language condition; block completes early when true |
-| `terminate_if` | string | No | Condition that terminates the workflow (marks as failed) |
-| `data_extraction_schema` | object | No | JSON Schema for data to extract at the end of navigation |
+| `max_steps_per_run` | integer | No | Step limit for this block (overrides workflow default) |
+| `complete_criterion` | string | No | Jinja expression or natural language condition; block completes early when true |
+| `terminate_criterion` | string | No | Condition that terminates the workflow (marks as failed) |
+| `data_schema` | object | No | JSON Schema for data to extract at the end of navigation |
 | `error_code_mapping` | object | No | Map error conditions to custom error codes |
 
 ## Action Block
@@ -28,9 +28,10 @@ Like the Navigation Block but takes **only one action** and stops. Use this when
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action_type` | string | Yes | The action to perform (e.g. Click, InputText, SelectOption) |
-| `element_id` | string | No | Element identifier to target |
-| `value` | string | No | Value to input (for InputText, SelectOption) |
+| `navigation_goal` | string | Yes | Natural language instruction for the single action to take (e.g. "Click the Submit button") |
+| `url` | string | No | URL to navigate to before taking the action |
+| `max_steps_per_run` | integer | No | Step limit (default: 1 for a single-action block) |
+| `error_code_mapping` | object | No | Map error conditions to custom error codes |
 
 ## Extract Block
 
@@ -39,7 +40,7 @@ Extracts structured data from the current page without taking any navigation act
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `data_extraction_goal` | string | Yes | Description of what to extract |
-| `data_extraction_schema` | object | No | JSON Schema defining the structure of extracted data |
+| `data_schema` | object | No | JSON Schema defining the structure of extracted data |
 
 Use this block when you want to capture information from a page that has already been navigated to.
 
@@ -50,20 +51,19 @@ Handles login flows with stored credentials. Skyvern never sends your password t
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `url` | string | No | Login page URL (navigates there first if provided) |
-| `credential_id` | string | No | ID of a Skyvern credential to use |
-| `credential_parameter_key` | string | No | Workflow parameter key holding a credential |
 | `navigation_goal` | string | No | Custom login instructions (useful for non-standard login flows) |
-| `max_steps` | integer | No | Step limit for the login flow |
+| `max_steps_per_run` | integer | No | Step limit for the login flow |
 
 When a website has an unusual login flow (CAPTCHA, multi-step verification, custom username field), add a custom `navigation_goal` with additional instructions.
 
 ## Validation Block
 
-Asserts the current workflow state. If the validation fails, the workflow is terminated with a failure status — like an assertion in a test.
+Asserts the current workflow state. Evaluates conditions without taking browser actions. If `terminate_criterion` evaluates to true (or `complete_criterion` is false), the workflow is terminated — like an assertion in a test. The ValidationBlock cannot be the first block in a workflow.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `validation_goal` | string | Yes | What to validate (e.g. "The order confirmation page is displayed and the order ID is visible") |
+| `complete_criterion` | string | No | Condition that marks the validation as passed (natural language or Jinja expression) |
+| `terminate_criterion` | string | No | Condition that terminates the workflow as failed |
 | `error_code_mapping` | object | No | Map validation failures to specific error codes |
 
 ## Task Block
@@ -75,10 +75,10 @@ The general-purpose block that combines navigation, data extraction, and validat
 | `url` | string | No | Starting URL for the task |
 | `navigation_goal` | string | No | Goal for browser navigation |
 | `data_extraction_goal` | string | No | What data to extract |
-| `data_extraction_schema` | object | No | JSON Schema for extracted data |
+| `data_schema` | object | No | JSON Schema for extracted data |
 | `complete_criterion` | string | No | Condition to complete the block early |
 | `terminate_criterion` | string | No | Condition to terminate the workflow |
-| `max_steps` | integer | No | Step limit |
+| `max_steps_per_run` | integer | No | Step limit |
 | `error_code_mapping` | object | No | Custom error code mapping |
 
 ## ForLoopBlock
@@ -132,9 +132,9 @@ The advanced version of the Navigation Block powered by the **Skyvern 2.0** engi
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `url` | string | No | Starting URL |
-| `navigation_goal` | string | Yes | Complex goal for the agent |
+| `prompt` | string | Yes | Complex goal for the agent |
 | `max_iterations` | integer | No | Overrides `MAX_ITERATIONS_PER_TASK_V2` (default 10) |
-| `max_steps_per_iteration` | integer | No | Step limit per iteration |
+| `max_steps` | integer | No | Step limit per run |
 
 Use this block when `skyvern-2.0` accuracy is needed within a workflow. [See the Engine Selection Guide](/running-tasks/run-tasks#engine-selection-guide) for a comparison of all available engines.
 
@@ -226,17 +226,27 @@ Use this block to transform data between steps (e.g. reformat a scraped address,
 
 ## ConditionalBlock
 
-Branches the workflow based on a condition. Evaluates the condition and runs either the `true_block` or `false_block`.
+Branches the workflow based on ordered conditions. Evaluates each `BranchCondition` top-to-bottom and runs the block pointed to by the first matching condition.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `condition` | string or object | Yes | A `JinjaBranchCriteria` expression or `PromptBranchCriteria` natural language condition |
-| `true_block` | block | No | Block to run if condition is true |
-| `false_block` | block | No | Block to run if condition is false |
+| `branch_conditions` | list | Yes | Ordered list of `BranchCondition` objects evaluated top-to-bottom. The first matching condition determines which block to run next |
+
+Each `BranchCondition` has:
+
+| Field | Type | Description |
+|---|---|---|
+| `criteria` | object | A `JinjaBranchCriteria` or `PromptBranchCriteria` expression (omit for the default branch) |
+| `next_block_label` | string | Label of the block to run when this condition matches |
+| `is_default` | boolean | When `true`, this branch runs if no other conditions match (acts as `else`). No `criteria` allowed |
+| `description` | string | Optional human-readable note about this branch |
 
 **Condition types:**
-- **Jinja expression** (`JinjaBranchCriteria`): evaluated as a Python boolean expression with Jinja template rendering. Example: `{{ items | length > 0 }}`
-- **Natural language** (`PromptBranchCriteria`): the LLM evaluates a natural language question against the current context. Example: `"Did the previous extraction find any results?"`
+- **Jinja expression** (`JinjaBranchCriteria`): `{ "criteria_type": "jinja2_template", "expression": "{{ items | length > 0 }}" }` — evaluated as a Python boolean with Jinja rendering
+- **Natural language** (`PromptBranchCriteria`): `{ "criteria_type": "prompt", "expression": "Did the previous extraction find any results?" }` — the LLM evaluates against current context
+- **Default branch**: `{ "is_default": true, "next_block_label": "fallback_block" }` — runs if no other condition matches
+
+A `ConditionalBlock` must have at least one branch and at most one default branch.
 
 ## HttpRequestBlock
 
@@ -258,15 +268,15 @@ Sends an email via SMTP.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `smtp_host` | string | Yes | SMTP server hostname |
-| `smtp_port` | integer | Yes | SMTP port (e.g. 587) |
-| `sender` | string | Yes | Sender email address |
+| `smtp_host` | string | Yes | SMTP server hostname (references an AWSSecretParameter key) |
+| `smtp_port` | string | Yes | SMTP port (e.g. `587`) (references an AWSSecretParameter key) |
+| `smtp_username` | string | Yes | SMTP username (references an AWSSecretParameter key) |
+| `smtp_password` | string | Yes | SMTP password (references an AWSSecretParameter key; use an app password for Gmail) |
+| `sender` | string | Yes | Sender email address (supports Jinja) |
 | `recipients` | list | Yes | List of recipient email addresses |
 | `subject` | string | Yes | Email subject (supports Jinja) |
 | `body` | string | Yes | Email body (supports Jinja) |
-| `smtp_username` | string | No | SMTP username |
-| `smtp_password` | string | No | SMTP password |
-| `attachments` | list | No | Attachment file paths or download URLs |
+| `file_attachments` | list | No | Attachment file paths or download URLs |
 
 ## FileParserBlock
 
@@ -275,34 +285,39 @@ Parses PDFs, CSVs, and Excel files. Returns structured data from the file.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `file_url` | string | Yes | URL of the file to parse (supports Jinja for dynamic file URLs from previous blocks) |
-| `file_type` | string | No | `pdf`, `csv`, or `xlsx`. Auto-detected from URL if omitted |
+| `file_type` | string | Yes | File type: `pdf`, `csv`, `excel`, `image`, or `docx` |
 
 ## DownloadToS3Block / UploadToS3Block
 
 Transfers files between the browser/workflow and AWS S3.
 
-**DownloadToS3Block** — downloads a file from a URL and uploads it to S3.
+**DownloadToS3Block** — downloads a file from a URL and uploads it to the configured S3 bucket (set via `AWS_S3_BUCKET_UPLOADS` env var). The uploaded S3 URI is stored as the block output.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `url` | string | Yes | File URL to download |
-| `s3_bucket` | string | Yes | Destination S3 bucket |
-| `s3_key` | string | Yes | Destination S3 object key (supports Jinja) |
+| `url` | string | Yes | File URL to download (supports Jinja) |
 
 **UploadToS3Block** — uploads a file that was downloaded during the workflow to S3.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `s3_bucket` | string | Yes | Destination S3 bucket |
+| `path` | string | No | Directory path within the workflow's download folder to upload. Defaults to the entire workflow download directory |
 
 ## FileUploadBlock
 
-Uploads downloaded files to a web form's file upload field.
+Uploads files from the workflow's download directory to cloud storage (S3 or Azure Blob Storage).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `file_url` | string | Yes | URL of the file to upload |
-| `navigation_goal` | string | Yes | Instructions for locating the upload field and submitting |
+| `storage_type` | string | No | `S3` (default) or `AZURE` |
+| `s3_bucket` | string | No | Destination S3 bucket (required when `storage_type=S3`) |
+| `aws_access_key_id` | string | No | AWS access key ID (supports Jinja) |
+| `aws_secret_access_key` | string | No | AWS secret access key (supports Jinja) |
+| `region_name` | string | No | AWS region (supports Jinja) |
+| `azure_storage_account_name` | string | No | Azure storage account name |
+| `azure_storage_account_key` | string | No | Azure storage account key |
+| `azure_blob_container_name` | string | No | Azure Blob container name |
+| `path` | string | No | Local path within the download directory to upload |
 
 ## WaitBlock
 
@@ -314,11 +329,14 @@ Pauses the workflow for a fixed time.
 
 ## HumanInteractionBlock
 
-Pauses the workflow and waits for a human to take an action in the browser before continuing.
+Pauses the workflow and waits for a human to take an action before continuing. If the human chooses negatively or the timeout expires, the workflow terminates.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `navigation_goal` | string | No | Instructions shown to the human operator |
+| `instructions` | string | No | Instructions shown to the human operator |
+| `positive_descriptor` | string | No | Label for the "continue" / approve action (default: "Approve") |
+| `negative_descriptor` | string | No | Label for the "stop" / reject action (default: "Reject") |
+| `timeout_seconds` | integer | No | Seconds to wait for human response before auto-terminating |
 
 ## WorkflowTriggerBlock
 
@@ -326,6 +344,8 @@ Triggers another workflow run from within the current workflow. Useful for compo
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `workflow_id` | string | Yes | ID of the workflow to trigger |
-| `parameters` | object | No | Parameters to pass to the triggered workflow |
-| `wait_for_completion` | boolean | No | Whether to wait for the triggered workflow to finish before continuing |
+| `workflow_permanent_id` | string | Yes | Permanent ID of the workflow to trigger |
+| `payload` | object | No | Parameters to pass to the triggered workflow as key-value pairs |
+| `wait_for_completion` | boolean | No | Whether to wait for the triggered workflow to finish before continuing (default: `true`) |
+| `browser_session_id` | string | No | Optional browser session for the triggered workflow |
+| `use_parent_browser_session` | boolean | No | When `true`, the child workflow inherits the parent's browser session (default: `false`) |
