@@ -699,3 +699,38 @@ Block string fields support Jinja2 templating for dynamic values:
 | `{{ workflow_run_id }}` | ID of the current workflow run. |
 | `{{ value \| json }}` | Inject `value` as a native JSON type (preserves booleans, integers, etc.). |
 | `{{ value \| tojson }}` | Serialize `value` to a JSON string. |
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Manage Workflows"
+    icon="folder-open"
+    href="/workflows/manage-workflows"
+  >
+    Create, edit, import, and export workflows in the UI
+  </Card>
+  <Card
+    title="Run Workflows"
+    icon="play"
+    href="/workflows/run-workflows"
+  >
+    Trigger workflow runs via the API and pass runtime parameters
+  </Card>
+  <Card
+    title="Workflow Parameters"
+    icon="sliders"
+    href="/workflows/workflow-parameters"
+  >
+    Declare and wire up parameters across workflow blocks
+  </Card>
+  <Card
+    title="Run a Task"
+    icon="bolt"
+    href="/running-tasks/run-tasks"
+  >
+    Execute a single-step automation when you don't need a full workflow
+  </Card>
+</CardGroup>

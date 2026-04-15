@@ -219,7 +219,7 @@ Skyvern sends a POST request with the full run data when the task completes or f
 
 Block until the task finishes instead of polling manually.
 
-```python Python
+```python
 result = await client.run_task(
     prompt="Get the title of the top post",
     url="https://news.ycombinator.com",
@@ -474,7 +474,7 @@ curl -X GET "https://api.skyvern.com/v1/runs/RUN_ID/artifacts?artifact_type=scre
     icon="sliders"
     href="/running-automations/task-parameters"
   >
-    Configure engines, proxies, extraction schemas, etc when running a task
+    Configure engines, proxies, extraction schemas, and more
   </Card>
   <Card
     title="Extract Structured Data"
@@ -482,5 +482,19 @@ curl -X GET "https://api.skyvern.com/v1/runs/RUN_ID/artifacts?artifact_type=scre
     href="/running-automations/extract-structured-data"
   >
     Define a schema to get typed JSON output from your automations
+  </Card>
+  <Card
+    title="Webhooks"
+    icon="bell"
+    href="/going-to-production/webhooks"
+  >
+    Get notified when tasks complete instead of polling
+  </Card>
+  <Card
+    title="Build a Workflow"
+    icon="diagram-project"
+    href="/multi-step-automations/build-a-workflow"
+  >
+    Chain tasks into multi-step automations with loops, files, and conditions
   </Card>
 </CardGroup>
