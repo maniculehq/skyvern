@@ -69,11 +69,7 @@ Both contain the same `status` field.
 ```
 </CodeGroup>
 
-The `status` field is at the top level of both responses.
-
-### For tasks
-
-Poll `get_run` until the status is terminal:
+The `status` field is at the top level of both responses. Poll `get_run` with the `run_id` until it reaches a terminal state. This works identically for task runs and workflow runs:
 
 <CodeGroup>
 ```python Python
@@ -133,68 +129,6 @@ done
 ```
 </CodeGroup>
 
-### For workflows
-
-Same polling pattern works for workflow runs:
-
-<CodeGroup>
-```python Python
-run_id = result.run_id
-
-while True:
-    run = await client.get_run(run_id)
-
-    if run.status in ["completed", "failed", "terminated", "timed_out", "canceled"]:
-        break
-
-    await asyncio.sleep(5)
-
-if run.status == "completed":
-    process_output(run.output)
-else:
-    handle_failure(run)
-```
-
-```typescript TypeScript
-const runId = result.run_id;
-
-while (true) {
-  const run = await client.getRun(runId);
-
-  if (["completed", "failed", "terminated", "timed_out", "canceled"].includes(run.status)) {
-    break;
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-}
-
-if (run.status === "completed") {
-  processOutput(run.output);
-} else {
-  handleFailure(run);
-}
-```
-
-```bash cURL
-# Poll workflow run until terminal state
-while true; do
-  RESPONSE=$(curl -s -X GET "https://api.skyvern.com/v1/runs/$WORKFLOW_RUN_ID" \
-    -H "x-api-key: $SKYVERN_API_KEY")
-
-  STATUS=$(echo $RESPONSE | jq -r '.status')
-
-  if [[ "$STATUS" == "completed" ]] || [[ "$STATUS" == "failed" ]] || \
-     [[ "$STATUS" == "terminated" ]] || [[ "$STATUS" == "timed_out" ]] || \
-     [[ "$STATUS" == "canceled" ]]; then
-    echo $RESPONSE | jq
-    break
-  fi
-
-  sleep 5
-done
-```
-</CodeGroup>
-
 **`failed` vs `terminated`:** A `failed` run hit infrastructure problems—retry might work. A `terminated` run means the AI recognized the goal is unachievable with current conditions. Retrying without changes (new credentials, different URL) will produce the same result.
 
 ---
@@ -215,7 +149,7 @@ The field is available in both the polling response and webhook payload:
 }
 ```
 
-### For tasks
+Use the `run_id` (for tasks) or `workflow_run_id` (for workflows) — both go through the same `get_run` endpoint:
 
 <CodeGroup>
 ```python Python
@@ -251,52 +185,6 @@ FAILURE_REASON=$(echo $RESPONSE | jq -r '.failure_reason')
 
 if [[ "$STATUS" == "failed" ]] || [[ "$STATUS" == "terminated" ]]; then
   echo "Run failed: $FAILURE_REASON"
-
-  # Fragile: parsing free text
-  if echo "$FAILURE_REASON" | grep -qi "login"; then
-    # refresh_credentials
-    echo "Login error detected"
-  fi
-fi
-```
-</CodeGroup>
-
-### For workflows
-
-<CodeGroup>
-```python Python
-run = await client.get_run(workflow_run_id)
-
-if run.status in ["failed", "terminated"]:
-    print(f"Workflow failed: {run.failure_reason}")
-
-    # Fragile: parsing free text
-    if "login" in run.failure_reason.lower():
-        refresh_credentials()
-```
-
-```typescript TypeScript
-const run = await client.getRun(workflowRunId);
-
-if (["failed", "terminated"].includes(run.status)) {
-  console.log(`Workflow failed: ${run.failure_reason}`);
-
-  // Fragile: parsing free text
-  if (run.failure_reason?.toLowerCase().includes("login")) {
-    refreshCredentials();
-  }
-}
-```
-
-```bash cURL
-RESPONSE=$(curl -s -X GET "https://api.skyvern.com/v1/runs/$WORKFLOW_RUN_ID" \
-  -H "x-api-key: $SKYVERN_API_KEY")
-
-STATUS=$(echo $RESPONSE | jq -r '.status')
-FAILURE_REASON=$(echo $RESPONSE | jq -r '.failure_reason')
-
-if [[ "$STATUS" == "failed" ]] || [[ "$STATUS" == "terminated" ]]; then
-  echo "Workflow failed: $FAILURE_REASON"
 
   # Fragile: parsing free text
   if echo "$FAILURE_REASON" | grep -qi "login"; then

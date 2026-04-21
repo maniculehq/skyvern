@@ -267,8 +267,11 @@ Small prompt changes can cut step count significantly.
 
 ## Monitor usage
 
-- Check `step_count` in run responses to understand actual consumption per task.
-- Use `get_run_timeline()` to inspect individual steps and identify waste (loops, unnecessary navigation, retries).
+Check `step_count` in every completed run response to understand actual consumption per task. A task that consistently uses 3–4 steps is well-tuned; one that regularly approaches `max_steps` is a candidate for prompt improvement or a simpler engine.
+
+For deeper inspection, use `get_run_timeline()` to retrieve a step-by-step breakdown. This shows each action the agent took, which is useful for spotting waste: repeated navigation to the same page, unnecessary scrolling before finding an element, or retries caused by ambiguous prompts.
+
+In [Skyvern Cloud](https://app.skyvern.com/settings), the **Usage** tab shows credit consumption over time and per-run breakdowns. Use this to track whether recent prompt changes reduced costs before deploying them broadly.
 
 ---
 

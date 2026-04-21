@@ -4,9 +4,7 @@ subtitle: Execute a single browser automation with natural language
 slug: running-automations/run-a-task
 ---
 
-A **Task** is the simplest way to automate a browser action. 
-
-You describe what you want in natural language, and Skyvern's AI navigates the web to complete it.
+A **Task** is the simplest way to automate a browser action. You describe what you want in natural language, and Skyvern's AI navigates the web to complete it.
 
 ---
 
@@ -102,9 +100,7 @@ The response includes a `run_id`. Use this ID to check status, fetch results, an
 
 ## Get results
 
-The `run_task` call queues the task and returns immediately. 
-
-Use the `run_id` to fetch results once the task reaches a terminal state.
+The `run_task` call queues the task and returns immediately. Use the `run_id` to fetch results once the task reaches a terminal state.
 
 | Status | Description |
 |--------|-------------|
@@ -213,7 +209,7 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
 ```
 </CodeGroup>
 
-Skyvern sends a POST request with the full run data when the task completes or fails.
+Skyvern sends a POST request with the full run data when the task completes or fails. See [Webhooks](/going-to-production/webhooks) for the payload format and signature verification.
 
 ### Option 3: Wait for completion (Python only)
 
@@ -345,9 +341,7 @@ The response from polling (`get_run`) and webhooks have slightly different struc
 
 ## Get artifacts
 
-The run response contains high-level data like `output`, `recording_url`, and `screenshot_urls`. 
-
-Every run also generates Artifacts, such as screenshots, reasoning logs, downloaded files, for observability. To get them, use `get_run_artifacts`.
+The run response contains high-level data like `output`, `recording_url`, and `screenshot_urls`. Every run also generates detailed artifacts — screenshots, reasoning logs, downloaded files — for observability. To retrieve them, use `get_run_artifacts`.
 
 <CodeGroup>
 ```python Python
