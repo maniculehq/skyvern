@@ -422,9 +422,9 @@ Browser sessions persist cookies, localStorage, and authentication state across 
 
 ## `totp_identifier`
 
-Identifier for TOTP codes when you push codes to Skyvern's API.
+A label that links this task to 2FA codes you push to Skyvern via API. When Skyvern encounters a 2FA prompt during login, it looks up the most recent code pushed under this identifier.
 
-Use this for two-factor authentication during task execution.
+Use this when you receive codes via email or SMS and forward them to Skyvern. See [Handle 2FA](/credentials/handle-2fa#method-2-push-codes-to-skyvern) for setup instructions.
 
 <CodeGroup>
 ```python Python
@@ -454,15 +454,13 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
 ```
 </CodeGroup>
 
-TOTP codes are used for two-factor authentication during automated logins.
-
 ---
 
 ## `totp_url`
 
-URL that Skyvern calls to fetch TOTP codes when needed.
+An endpoint that Skyvern calls to retrieve 2FA codes on demand. When Skyvern encounters a 2FA prompt during login, it sends a POST request to this URL and expects the verification code in the response.
 
-Use this when Skyvern should retrieve codes from your endpoint.
+Use this when your system receives codes and can expose them via HTTP. Skyvern polls every 10 seconds until a code is returned. See [Handle 2FA](/credentials/handle-2fa#method-3-skyvern-pulls-from-your-endpoint) for the expected request/response format and signature verification.
 
 <CodeGroup>
 ```python Python
@@ -491,8 +489,6 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
   }'
 ```
 </CodeGroup>
-
-TOTP codes are used for two-factor authentication during automated logins.
 
 ---
 
@@ -836,7 +832,9 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
 
 ## `include_action_history_in_verification`
 
-Include action history when verifying task completion. Default: `false`.
+Pass the full action history to the Validator when it checks whether the task goal was achieved. Default: `false`.
+
+By default, the Validator only sees the current page screenshot. Setting this to `true` also passes the sequence of actions taken, which helps the Validator confirm that multi-step goals were actually completed — for example, that a form was filled and submitted rather than just visited. Useful when the final page state alone is ambiguous (a confirmation page that looks the same whether you filled the form or navigated there directly).
 
 <CodeGroup>
 ```python Python
