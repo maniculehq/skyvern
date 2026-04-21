@@ -18,6 +18,9 @@ This page covers all parameters you can pass when creating and running workflows
 | [`proxy_location`](#proxy_location-create) | string or object | Set default proxy for all blocks |
 | [`webhook_callback_url`](#webhook_callback_url) | string | Get notified when any run of this workflow completes |
 | [`persist_browser_session`](#persist_browser_session) | boolean | Keep the browser session alive across blocks |
+| [`run_sequentially`](#run_sequentially-and-sequential_key) | boolean | Queue runs so only one executes at a time |
+| [`sequential_key`](#run_sequentially-and-sequential_key) | string | Identifier for the run queue (use with `run_sequentially`) |
+| [`finally_block_label`](#finally_block_label) | string | Block that always runs regardless of workflow outcome |
 
 ---
 
@@ -127,6 +130,33 @@ curl -X POST "https://api.skyvern.com/v1/workflows" \
   }
 }
 ```
+
+#### `finally_block_label`
+
+Label of a block that always runs when the workflow ends — whether it completed, failed, terminated, or timed out. The only exception is explicit cancellation.
+
+Use `finally_block_label` for cleanup, notifications, or audit logging that must always execute regardless of whether earlier blocks succeeded or failed.
+
+```json
+{
+  "workflow_definition": {
+    "parameters": [...],
+    "blocks": [
+      {"block_type": "navigation", "label": "download_report", ...},
+      {"block_type": "send_email",  "label": "notify_team",    ...}
+    ],
+    "finally_block_label": "notify_team"
+  }
+}
+```
+
+The `finally_block_label` block must be listed in `blocks` like any other block, but it will also execute at the end regardless of the workflow outcome. It cannot have a `next_block_label` (it must be a terminal block).
+
+<Warning>
+Without `finally_block_label`, a block with `continue_on_failure: false` (the default) will stop the entire workflow if it fails. Subsequent blocks — including notification or cleanup steps — won't run. Use `finally_block_label` for anything that must always execute.
+</Warning>
+
+---
 
 #### `parameters`
 
@@ -765,6 +795,70 @@ Additional advanced parameters are available when running a workflow, including 
 
 ---
 
+### `run_sequentially` and `sequential_key`
+
+These two parameters prevent concurrent runs of the same workflow from logging into the same account simultaneously — which often triggers security blocks or account locks.
+
+**How it works:** When `run_sequentially` is `true` and a `sequential_key` is set, Skyvern queues new runs of this workflow that share the same key. Only one run with that key executes at a time; subsequent runs wait until the active run finishes.
+
+Set these on the workflow definition (they're workflow-level settings, not per-run overrides):
+
+<CodeGroup>
+```python Python
+workflow = await client.create_workflow(
+    json_definition={
+        "title": "Invoice Downloader",
+        "run_sequentially": True,
+        "sequential_key": "acme-corp-invoice-portal",
+        "workflow_definition": {...}
+    }
+)
+```
+
+```typescript TypeScript
+const workflow = await client.createWorkflow({
+  body: {
+    json_definition: {
+      title: "Invoice Downloader",
+      run_sequentially: true,
+      sequential_key: "acme-corp-invoice-portal",
+      workflow_definition: {...},
+    },
+  },
+});
+```
+
+```bash cURL
+curl -X POST "https://api.skyvern.com/v1/workflows" \
+  -H "x-api-key: $SKYVERN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "json_definition": {
+      "title": "Invoice Downloader",
+      "run_sequentially": true,
+      "sequential_key": "acme-corp-invoice-portal",
+      "workflow_definition": {...}
+    }
+  }'
+```
+</CodeGroup>
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `run_sequentially` | boolean | `false` | Queue runs so only one executes at a time per `sequential_key` |
+| `sequential_key` | string | `null` | Identifier for the queue. Use the credential or portal name so multiple workflows sharing the same account are serialized together |
+
+**When to use this:**
+- Any workflow that logs into an account — concurrent logins to the same account trigger "another session is active" warnings or blocks
+- Bulk processing workflows triggered by a schedule or webhook where you fire many runs quickly
+- Workflows using shared Bitwarden / 1Password credentials (source: `skyvern/forge/sdk/workflow/models/workflow.py:L112-L113`)
+
+**When NOT to use this:**
+- Workflows that don't share credentials or session state — unnecessary serialization adds latency
+- Workflows using browser profiles instead of live login (profiles already serialize session reuse)
+
+---
+
 ## Run response
 
 When you run a workflow, the response contains:
@@ -775,6 +869,7 @@ When you run a workflow, the response contains:
 | `status` | string | One of: `created`, `queued`, `running`, `completed`, `failed`, `terminated`, `timed_out`, `canceled`. |
 | `output` | object/array/string/null | Extracted data from the workflow, if any. |
 | `failure_reason` | string/null | Why the run failed, if applicable. |
+| `failure_category` | array/null | Machine-readable failure classification. Each entry: `{category: string, confidence_float: float, reasoning: string}`. Categories: `AUTH_FAILURE`, `ANTI_BOT_DETECTION`, `BROWSER_ERROR`, `NAVIGATION_FAILURE`, `PAGE_LOAD_TIMEOUT`, `ELEMENT_NOT_FOUND`, `DATA_EXTRACTION_FAILURE`, `WRONG_PAGE_STATE`, `MAX_STEPS_EXCEEDED`, `LLM_ERROR`, `CREDENTIAL_ERROR`, `UNKNOWN`. See [Failure categories](/going-to-production/error-handling#failure-categories). |
 | `errors` | array/null | List of errors encountered during the run. |
 | `downloaded_files` | array/null | Files downloaded during the run. |
 | `recording_url` | string/null | URL to the browser recording. |

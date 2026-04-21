@@ -1,0 +1,167 @@
+---
+title: LangChain Integration
+subtitle: Use Skyvern as a LangChain tool to add browser automation to your AI agents
+slug: integrations/langchain
+---
+
+Skyvern ships a first-party LangChain integration (`skyvern-langchain`) that exposes browser automation as LangChain tools. This lets you add Skyvern tasks to any LangChain agent or chain without writing custom API glue code.
+
+**Package:** [`skyvern-langchain`](https://pypi.org/project/skyvern-langchain/) (source: `integrations/langchain/`)
+
+---
+
+## Installation
+
+```bash
+pip install skyvern-langchain
+
+# Optional: to run the examples below you'll also need an LLM provider
+pip install langchain-openai
+```
+
+---
+
+## Available tools
+
+| Tool class | Module | What it does |
+|------------|--------|--------------|
+| `RunTask` | `skyvern_langchain.agent` or `.client` | Run a task synchronously — blocks until complete |
+| `DispatchTask` | `skyvern_langchain.agent` or `.client` | Submit a task and return immediately (async/fire-and-forget) |
+| `GetTask` | `skyvern_langchain.agent` or `.client` | Retrieve task status and output by task ID |
+
+**Two import paths:**
+- `skyvern_langchain.agent` — runs Skyvern locally (requires `skyvern init` on your machine)
+- `skyvern_langchain.client` — calls the Skyvern Cloud API (requires `SKYVERN_API_KEY`)
+
+---
+
+## Basic usage (Cloud API)
+
+```python
+import asyncio
+from skyvern_langchain.client import RunTask
+
+# Load SKYVERN_API_KEY from environment, or pass api_key= directly
+run_task = RunTask(api_key="your-skyvern-api-key")
+
+async def main():
+    result = await run_task.ainvoke(
+        "Navigate to the Hacker News homepage and return the top 3 post titles."
+    )
+    print(result)
+
+asyncio.run(main())
+```
+
+`RunTask.ainvoke()` accepts a plain text description of what to do. The result is the task output as a string.
+
+---
+
+## Basic usage (local Skyvern)
+
+Requires `skyvern init` to be run first.
+
+```python
+import asyncio
+from skyvern_langchain.agent import RunTask
+
+run_task = RunTask()
+
+async def main():
+    result = await run_task.ainvoke(
+        "Navigate to the Hacker News homepage and return the top 3 post titles."
+    )
+    print(result)
+
+asyncio.run(main())
+```
+
+---
+
+## Using with a LangChain agent
+
+The real power of the integration is embedding Skyvern inside a LangChain agent. The agent decides when to call Skyvern and how to use the results:
+
+```python
+import asyncio
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain.agents import initialize_agent, AgentType
+from langchain_community.tools.sleep.tool import SleepTool
+from skyvern_langchain.client import DispatchTask, GetTask
+
+load_dotenv()  # Load OPENAI_API_KEY and SKYVERN_API_KEY
+
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+
+agent = initialize_agent(
+    llm=llm,
+    tools=[
+        DispatchTask(),    # Submit task → returns task_id immediately
+        GetTask(),         # Poll task status by task_id
+        SleepTool(),       # Wait between polls
+    ],
+    verbose=True,
+    agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+)
+
+async def main():
+    result = await agent.ainvoke(
+        "Use Skyvern to get the top 3 posts from Hacker News. "
+        "Dispatch the task, then poll every 60 seconds until it completes."
+    )
+    print(result)
+
+asyncio.run(main())
+```
+
+The agent handles the polling loop itself using `SleepTool`. This pattern is useful when you want the LLM to decide how to handle failures or partial results.
+
+---
+
+## Use cases
+
+**Research and data aggregation:** Use a LangChain agent to orchestrate multiple Skyvern tasks across different sites, then synthesize the results. Example: compare prices across 10 competitor sites.
+
+**Form-filling with dynamic data:** Generate form content with an LLM (text generation), then pass it to Skyvern to fill and submit the form. The LangChain chain handles the data, Skyvern handles the browser.
+
+**Multi-step research workflows:** Chain document retrieval (via LangChain's document loaders) with Skyvern web automation. Example: read a PDF report, then verify its claims by navigating to the referenced websites.
+
+---
+
+## Limitations
+
+- `DispatchTask` returns a task ID, not the result. Your agent must use `GetTask` to poll for completion.
+- The `.agent` module requires a local Skyvern instance. The `.client` module uses Cloud only.
+- Synchronous `RunTask.ainvoke()` blocks until the task completes — use `DispatchTask` + `GetTask` for long-running tasks or when you want the agent to do other work while waiting.
+
+---
+
+## LlamaIndex integration
+
+A similar integration exists for LlamaIndex: [`skyvern-llamaindex`](https://pypi.org/project/skyvern-llamaindex/) (source: `integrations/llama_index/`). Install and usage patterns are analogous to the LangChain integration.
+
+```bash
+pip install skyvern-llamaindex
+```
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="MCP Integration"
+    icon="robot"
+    href="/integrations/mcp"
+  >
+    Add browser automation to Claude, Cursor, or Windsurf via MCP
+  </Card>
+  <Card
+    title="Run a Task"
+    icon="play"
+    href="/running-automations/run-a-task"
+  >
+    Direct API access without an agent framework
+  </Card>
+</CardGroup>

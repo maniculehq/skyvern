@@ -427,6 +427,27 @@ Simplified task block using natural language prompts. Uses computer-use agents f
 `task_v2` does not use `parameter_keys`. All workflow parameters and previous block outputs are automatically available as Jinja2 template variables in `prompt` and `url`. For example: `"Fill the form with name {{first_name}} and email {{email}}"`.
 </Info>
 
+**Output shape (accessible as `{{label_output}}`)**
+
+Unlike other blocks, `task_v2` returns a structured object — not just null or the extracted data:
+
+```json
+{
+  "task_id": "tsk_v2_...",
+  "status": "completed",
+  "summary": "Filled the contact form and submitted it successfully.",
+  "extracted_information": { "confirmation_number": "ABC123" },
+  "failure_reason": null,
+  "failure_category": null,
+  "downloaded_files": [],
+  "downloaded_file_urls": []
+}
+```
+
+Use dot notation to access nested fields in downstream blocks: `{{complete_form_output.extracted_information.confirmation_number}}`.
+
+The `failure_category` field is a list of objects `[{category, confidence_float, reasoning}]` when the block fails. See [Failure categories](/going-to-production/error-handling#failure-categories) for the full reference.
+
 ---
 
 ## Validation
@@ -619,6 +640,16 @@ Set `max_concurrency` to run multiple iterations at the same time. This is usefu
 
 Use sequential (default) when iterations depend on each other or share browser state. Use parallel when each iteration visits an independent URL and the blocks inside don't reference previous-iteration outputs.
 
+<Warning>
+**`browser_session_id` forces sequential execution.** If the workflow run uses a persistent browser session (`browser_session_id`), Skyvern silently ignores `max_concurrency` and runs iterations one at a time. This is intentional — parallel iterations cannot safely share a single live browser page (source: `skyvern/forge/sdk/workflow/models/block.py:L1844-L1851`).
+
+If you need parallel execution, run the workflow without a persistent browser session, or use `workflow_trigger` blocks instead.
+</Warning>
+
+<Note>
+**Plan-level concurrency quota.** Even without a browser session, `max_concurrency` is capped by a per-organization quota enforced at runtime. If the quota is exhausted (e.g., many other parallel loops are running), Skyvern reduces or eliminates parallelism automatically. You cannot rely on exactly `N` concurrent iterations being guaranteed.
+</Note>
+
 The output of a `for_loop` block is an array containing the result from each iteration.
 
 ---
@@ -693,6 +724,10 @@ Navigate to download a file from a website.
 | `disable_cache` | boolean | `false` | Disable caching. |
 
 Downloaded files are stored in `SKYVERN_DOWNLOAD_DIRECTORY`—use this path in `upload_to_s3`, `file_upload`, or `send_email`'s `file_attachments` to access them.
+
+<Note>
+**`complete_on_download: true` completes as soon as any download is triggered.** The browser does not wait for the download to finish before marking the block as complete. If your next block depends on the file contents, add a short `wait` block (e.g., `wait_sec: 10`) after the download to let it complete before accessing the file.
+</Note>
 
 ---
 
@@ -1005,10 +1040,65 @@ Execute custom Python code for data transformation or browser control.
 | `code` | string | — | **Required.** Python code to execute. Store result in `result` variable. |
 | `parameter_keys` | array | — | Parameters available to the code. |
 
-Available objects: `skyvern_page` (Playwright page object for browser control).
+**Variables available in your code:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `page` | `playwright.async_api.Page` | Playwright page object for browser control (invite-only on Cloud) |
+| `result` | any | Set this variable to the value you want the block to output |
+| Parameters | any | Each listed `parameter_key` is injected as a variable by its name |
+
+**Available built-ins** (all others are blocked):
+
+```
+print, len, range, str, int, float, dict, list, tuple, set, bool,
+sleep (asyncio.sleep), asyncio.sleep, re, json, Exception
+```
+
+**Sandbox restrictions:** The code block runs in a restricted Python sandbox. These are **not allowed** and will raise `InsecureCodeDetected`:
+
+- `import` statements — no module imports
+- Dunder attributes (`__foo__`) — no accessing `__builtins__`, `__class__`, etc.
+- OS/subprocess access — `os.system`, `subprocess`, `Popen`, `fork`, etc.
+- Network primitives — `open_connection`, `create_connection`, etc.
+- File system operations — `listdir`, `makedirs`, `rmdir`
+
+The sandbox is a defense-in-depth layer, not a full process-level isolation (source: `skyvern/forge/sdk/workflow/models/block.py:L2830`).
+
+**Example — data transformation:**
+
+```yaml
+- block_type: code
+  label: build_report_row
+  parameter_keys:
+    - product_name
+    - price_usd
+    - quantity
+  code: |
+    if price_usd and quantity:
+        total = float(price_usd) * int(quantity)
+        result = {
+            "product": product_name,
+            "total_usd": round(total, 2),
+            "over_budget": total > 500
+        }
+    else:
+        result = None
+```
+
+**Example — browser control with `page`:**
+
+```yaml
+- block_type: code
+  label: press_escape
+  code: |
+    await page.keyboard.press("Escape")
+    await page.wait_for_timeout(500)
+    result = {"escaped": True}
+```
 
 <Note>
-Code Block with browser control is invite-only on Skyvern Cloud. Contact support@skyvern.com for access.
+Code Block with browser control (`page`) is invite-only on Skyvern Cloud. Contact support@skyvern.com for access. The `result` variable is the only value captured from the code — all other local variables are discarded.
 </Note>
 
 ---

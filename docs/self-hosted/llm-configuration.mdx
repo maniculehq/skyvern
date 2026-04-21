@@ -533,17 +533,42 @@ SECONDARY_LLM_KEY=ANTHROPIC_CLAUDE4.5_SONNET
 
 ### Task-specific models
 
-For fine-grained control, you can override models for specific operations:
+For fine-grained cost control, every Skyvern agent operation has a dedicated LLM key override. All default to `LLM_KEY` if not set (source: `skyvern/config.py:L207-L219`).
+
+| Variable | Agent operation | Cost vs accuracy tradeoff |
+|----------|-----------------|--------------------------|
+| `EXTRACTION_LLM_KEY` | Extracting structured data from pages | High-quality extraction needs a capable model; Sonnet or Flash usually sufficient |
+| `CHECK_USER_GOAL_LLM_KEY` | Verifying whether the agent's goal was achieved | Often lower stakes — a faster model works |
+| `SELECT_AGENT_LLM_KEY` | Selecting elements to interact with | Core to navigation accuracy; keep high quality |
+| `NORMAL_SELECT_AGENT_LLM_KEY` | Standard element selection | Can use a cheaper model for most pages |
+| `SINGLE_CLICK_AGENT_LLM_KEY` | Single-action click decisions | Low complexity — Flash/Mini tier is fine |
+| `SINGLE_INPUT_AGENT_LLM_KEY` | Single-field input decisions | Low complexity — Flash/Mini tier is fine |
+| `PARSE_SELECT_LLM_KEY` | Parsing select-option dropdowns | Usually straightforward; cheaper model works |
+| `PROMPT_BLOCK_LLM_KEY` | Default model for `text_prompt` workflow blocks | Match to the complexity of your prompts |
+| `AUTO_COMPLETION_LLM_KEY` | Autocomplete UI suggestions | Performance-sensitive; use a fast model |
+| `SCRIPT_GENERATION_LLM_KEY` | Generating reusable Playwright code | GPT-4/5 or Opus excels at code generation |
+| `SCRIPT_REVIEWER_LLM_KEY` | Reviewing generated scripts for correctness | Same tier as `SCRIPT_GENERATION_LLM_KEY` |
+| `ADAPTIVE_SCRIPT_GEN_LLM_KEY` | Adaptive script regeneration on failure | Same tier as `SCRIPT_GENERATION_LLM_KEY` |
+
+**Example cost-optimized configuration:**
 
 ```bash .env
-# Model for data extraction from pages (defaults to LLM_KEY if not set)
-EXTRACTION_LLM_KEY=ANTHROPIC_CLAUDE4.5_SONNET
+# Primary model for navigation decisions
+LLM_KEY=ANTHROPIC_CLAUDE4.5_OPUS
 
-# Model for generating code/scripts in code blocks (defaults to LLM_KEY if not set)
+# Use cheaper model for simpler operations
+SECONDARY_LLM_KEY=ANTHROPIC_CLAUDE4.5_SONNET
+EXTRACTION_LLM_KEY=ANTHROPIC_CLAUDE4.5_SONNET
+CHECK_USER_GOAL_LLM_KEY=ANTHROPIC_CLAUDE4.5_HAIKU
+SINGLE_CLICK_AGENT_LLM_KEY=ANTHROPIC_CLAUDE4.5_HAIKU
+SINGLE_INPUT_AGENT_LLM_KEY=ANTHROPIC_CLAUDE4.5_HAIKU
+
+# High quality for code generation
 SCRIPT_GENERATION_LLM_KEY=OPENAI_GPT5
+SCRIPT_REVIEWER_LLM_KEY=OPENAI_GPT5
 ```
 
-Most deployments don't need task-specific models. Start with `LLM_KEY` and `SECONDARY_LLM_KEY`.
+Most deployments don't need task-specific models. Start with `LLM_KEY` and `SECONDARY_LLM_KEY`, then add per-operation overrides if cost profiling shows a specific operation consuming most of your budget.
 
 ---
 

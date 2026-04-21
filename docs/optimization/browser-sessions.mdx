@@ -571,6 +571,16 @@ curl -s -X POST "https://api.skyvern.com/v1/browser_sessions" \
 ```
 </CodeGroup>
 
+### For loops always run sequentially in a persistent session
+
+When a workflow uses `browser_session_id` (passed at run time) or `persist_browser_session: true` (set at workflow definition time), any `for_loop` blocks in that workflow run **sequentially** — even if you've set `max_concurrency` to a value greater than 1.
+
+This is intentional: parallel iterations cannot safely share a single live browser page (two iterations racing to navigate the same tab would corrupt each other's state). Skyvern silently reduces `max_concurrency` to 1 in this case (source: `skyvern/forge/sdk/workflow/models/block.py:L1844-L1851`).
+
+**If you need parallel loops AND a persistent session:** use `workflow_trigger` blocks inside the for_loop instead of directly nesting navigation blocks. Each child workflow gets its own browser context.
+
+---
+
 ### Use workflows for predetermined sequences
 
 If your steps don't need pauses between them, a workflow runs them in a single browser instance without the overhead of creating and managing a session. Each task in a session incurs its own startup cost, while workflow blocks share one browser.

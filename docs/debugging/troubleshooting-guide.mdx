@@ -34,6 +34,10 @@ When a run fails or produces unexpected results, this guide helps you identify t
 - `visible_elements_tree` — What elements were detected
 - `har` — Network requests if something failed to load
 
+<Note>
+**Check `failure_category` first.** On task_v2 runs, Skyvern automatically classifies the failure into categories like `AUTH_FAILURE`, `ANTI_BOT_DETECTION`, or `ELEMENT_NOT_FOUND`. These appear in `run.failure_category` before you dig into artifacts. See [Failure categories](/going-to-production/error-handling#failure-categories) for the full reference and how to act on each category.
+</Note>
+
 ---
 
 ## Step 1: Check the run
@@ -51,6 +55,11 @@ print(f"Status: {run.status}")
 print(f"Failure reason: {run.failure_reason}")
 print(f"Step count: {run.step_count}")
 print(f"Output: {run.output}")
+
+# For task_v2 runs: machine-readable failure categories
+if run.failure_category:
+    top = run.failure_category[0]
+    print(f"Failure category: {top['category']} (confidence: {top['confidence_float']})")
 ```
 
 ```typescript TypeScript
@@ -66,12 +75,18 @@ console.log(`Status: ${run.status}`);
 console.log(`Failure reason: ${run.failure_reason}`);
 console.log(`Step count: ${run.step_count}`);
 console.log(`Output: ${JSON.stringify(run.output)}`);
+
+// For task_v2 runs: machine-readable failure categories
+if (run.failure_category?.length) {
+  const top = run.failure_category[0];
+  console.log(`Failure category: ${top.category} (confidence: ${top.confidence_float})`);
+}
 ```
 
 ```bash cURL
 curl -X GET "https://api.skyvern.com/v1/runs/$RUN_ID" \
   -H "x-api-key: $SKYVERN_API_KEY" \
-  | jq '{status, failure_reason, step_count, output}'
+  | jq '{status, failure_reason, step_count, output, failure_category}'
 ```
 </CodeGroup>
 

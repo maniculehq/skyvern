@@ -179,7 +179,8 @@
               "going-to-production/reliability-tips",
               "going-to-production/captcha-bot-detection",
               "integrations/mcp",
-              "integrations/cli"
+              "integrations/cli",
+              "integrations/langchain"
             ]
           },
           {

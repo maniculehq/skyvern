@@ -611,6 +611,73 @@ If `verify_login` sees a login error, the workflow terminates with `output.error
 
 ---
 
+## Failure categories
+
+In addition to `failure_reason` (free text) and `output.error` (your custom code), Skyvern also classifies every failure into one or more **failure categories** using keyword matching on the `failure_reason` and the exception type (source: `skyvern/forge/failure_classifier.py`).
+
+The `failure_category` field appears in the API response for task runs and in `task_v2` block outputs within workflows. Each entry has three keys:
+
+```json
+{
+  "failure_category": [
+    {
+      "category": "AUTH_FAILURE",
+      "confidence_float": 0.7,
+      "reasoning": "Keywords matched"
+    }
+  ]
+}
+```
+
+Multiple categories may appear if the failure matches several patterns. They are sorted by confidence descending.
+
+### Category reference
+
+| Category | Trigger keywords / conditions | Typical fix |
+|----------|-------------------------------|-------------|
+| `ANTI_BOT_DETECTION` | "captcha", "cloudflare", "bot detect", "ip block", "human verification", "access denied" (without auth context) | Use `RESIDENTIAL_ISP` proxy, browser profile, or add `captcha-solver` extension |
+| `AUTH_FAILURE` | "login fail", "authentication fail", "mfa", "password", "access denied" (with auth context) | Verify credentials, configure TOTP, use browser profile |
+| `BROWSER_ERROR` | Exception class contains "Browser", "CDP", "TargetClosed"; "browser crash", "page closed" | Retry — usually transient; persistent issues indicate infra problems |
+| `NAVIGATION_FAILURE` | `FailedToNavigateToUrl` exception, "404", "redirect loop" | Check URL is correct and publicly accessible |
+| `PAGE_LOAD_TIMEOUT` | Exception class contains "Timeout", "timeout" in reason | Increase `max_steps`, simplify task, check site availability |
+| `CREDENTIAL_ERROR` | `BitwardenBaseError` exception, "credential not found" | Verify credential exists and matches expected identifier |
+| `DATA_EXTRACTION_FAILURE` | `ScrapingFailed` exception, "empty extraction" | Add explicit extraction schema, check page loaded correctly |
+| `ELEMENT_NOT_FOUND` | `ElementNotFound` exception, "no matching element" | Describe element visually, use `max_screenshot_scrolls` for lazy content |
+| `WRONG_PAGE_STATE` | "unexpected page", "wrong page", "blank page" | Add navigation reset between workflow blocks |
+| `MAX_STEPS_EXCEEDED` | "max steps", "step limit" | Increase `max_steps` or break task into smaller blocks |
+| `LLM_ERROR` | Exception class contains "LLM", "APIError", "RateLimit"; "rate limit" | Check LLM API key, quota, or retry after a delay |
+| `LLM_REASONING_ERROR` | "wrong action", "invalid action", "hallucin" | Improve prompt specificity; add `complete_criterion` / `terminate_criterion` |
+| `UNKNOWN` | No other keyword matched (fallback for definite failures) | Inspect `recording` artifact and `llm_response_parsed` |
+
+### Using failure_category in code
+
+```python
+run = await client.get_run(run_id)
+
+if run.status in ["failed", "terminated"]:
+    categories = run.failure_category or []
+
+    # Get highest-confidence category
+    top = categories[0] if categories else None
+
+    if top and top["category"] == "AUTH_FAILURE":
+        await refresh_credentials("vendor-portal")
+    elif top and top["category"] == "ANTI_BOT_DETECTION":
+        await retry_with_residential_isp_proxy()
+    elif top and top["category"] in ["BROWSER_ERROR", "NAVIGATION_FAILURE"]:
+        # Transient — retry once
+        await retry_task(run_id)
+    else:
+        # Log full categories for debugging
+        log_failure(run_id, run.failure_reason, categories)
+```
+
+<Note>
+`failure_category` is currently returned for **task_v2 runs** (the default `skyvern-2.0` engine). For `skyvern-1.0` engine runs, check `run.failure_reason` directly. The field is always a list (never a single object) and may be `null` if the run completed or if no category matched a forced-optional path.
+</Note>
+
+---
+
 ## Common error patterns
 
 | Error Code | Description | Typical Response |

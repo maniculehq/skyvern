@@ -10,15 +10,16 @@ slug: debugging/faq
 Check these in order:
 
 1. **Run status** — Use `get_run(run_id)` to see the status and `failure_reason`
-2. **Timeline** — Use `get_run_timeline(run_id)` to find which block failed
-3. **Artifacts** — Check `screenshot_final` to see where it stopped, and `recording` to watch what happened
+2. **`failure_category`** — On task_v2 runs, check `run.failure_category` for machine-readable classification (e.g., `AUTH_FAILURE`, `ANTI_BOT_DETECTION`, `ELEMENT_NOT_FOUND`). This is faster than parsing `failure_reason` text
+3. **Timeline** — Use `get_run_timeline(run_id)` to find which block failed
+4. **Artifacts** — Check `screenshot_final` to see where it stopped, and `recording` to watch what happened
 
 Common causes:
 - **`terminated`** — The AI couldn't complete the goal (CAPTCHA, login blocked, element not found)
 - **`timed_out`** — Exceeded `max_steps`. Increase it or simplify the task
 - **`failed`** — System error (browser crash, network failure)
 
-See the [Troubleshooting Guide](/debugging/troubleshooting-guide) for detailed steps.
+See the [Troubleshooting Guide](/debugging/troubleshooting-guide) for detailed steps and [Failure categories](/going-to-production/error-handling#failure-categories) for how to act on each category.
 </Accordion>
 
 <Accordion title="Why is the AI clicking the wrong element?">
