@@ -347,7 +347,7 @@ The response from polling (`get_run`) and webhooks have slightly different struc
 
 The run response contains high-level data like `output`, `recording_url`, and `screenshot_urls`. 
 
-Every run also generates Artifacts, such as screenshots, reasoning logs, downloaded files, for observability. To get them, use `get_run_artifacts`.
+Every run also generates artifacts — screenshots, reasoning logs, downloaded files — for observability and debugging. To retrieve them, use `get_run_artifacts`. For guidance on using artifacts to diagnose failures, see [Using Artifacts](/debugging/using-artifacts).
 
 <CodeGroup>
 ```python Python
@@ -370,8 +370,6 @@ curl -X GET "https://api.skyvern.com/v1/runs/RUN_ID/artifacts" \
   -H "x-api-key: $SKYVERN_API_KEY"
 ```
 </CodeGroup>
-
-This returns a list of artifacts.
 
 **Example response:**
 

@@ -422,9 +422,9 @@ Browser sessions persist cookies, localStorage, and authentication state across 
 
 ## `totp_identifier`
 
-Identifier for TOTP codes when you push codes to Skyvern's API.
+A label that identifies which TOTP code to use when Skyvern encounters a 2FA prompt. You push the code to Skyvern's API yourself using this identifier — Skyvern does not fetch it. Use `totp_identifier` when your application generates the OTP and sends it to Skyvern on demand.
 
-Use this for two-factor authentication during task execution.
+See [Handle 2FA](/credentials/handle-2fa) for the full push-code flow.
 
 <CodeGroup>
 ```python Python
@@ -454,15 +454,13 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
 ```
 </CodeGroup>
 
-TOTP codes are used for two-factor authentication during automated logins.
-
 ---
 
 ## `totp_url`
 
-URL that Skyvern calls to fetch TOTP codes when needed.
+A URL on your server that Skyvern polls to fetch a fresh TOTP code whenever a 2FA prompt appears. Use `totp_url` when your server generates the OTP — Skyvern calls this endpoint automatically during execution and you don't need to push codes manually.
 
-Use this when Skyvern should retrieve codes from your endpoint.
+See [Handle 2FA](/credentials/handle-2fa) for the expected response format from your endpoint.
 
 <CodeGroup>
 ```python Python
@@ -491,8 +489,6 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
   }'
 ```
 </CodeGroup>
-
-TOTP codes are used for two-factor authentication during automated logins.
 
 ---
 
@@ -884,5 +880,19 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
     href="/running-automations/run-a-task"
   >
     Execute tasks and retrieve results
+  </Card>
+  <Card
+    title="Handle 2FA"
+    icon="shield"
+    href="/credentials/handle-2fa"
+  >
+    Configure TOTP and two-factor authentication for automated logins
+  </Card>
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/going-to-production/error-handling"
+  >
+    Map failures to custom error codes for programmatic handling
   </Card>
 </CardGroup>

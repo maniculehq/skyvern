@@ -4,7 +4,7 @@ subtitle: Build systems that detect, classify, and recover from failures
 slug: going-to-production/error-handling
 ---
 
-Skyvern lets you make your workflows and tasks handle errors gracefully instead of failing silently.
+Tasks and workflows fail for many reasons: bad credentials, maintenance pages, missing data, network errors. Without a structured approach, these become silent failures that are hard to diagnose or recover from automatically.
 
 Every run returns a `status`. When it's not `completed`, you need to know what went wrong and respond programmatically. The flow is:
 
