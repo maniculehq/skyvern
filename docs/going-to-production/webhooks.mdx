@@ -292,14 +292,14 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
     .update(payload)
     .digest("hex");
 
-  // Use timing-safe comparison to prevent timing attacks
+  // Use timing-safe comparison to prevent timing attacks.
+  // timingSafeEqual throws if buffers differ in length; returns false if same
+  // length but contents differ. Check the return value explicitly.
   let valid = false;
   try {
-    crypto.timingSafeEqual(
-      Buffer.from(signature || ''),
-      Buffer.from(expected)
-    );
-    valid = true;
+    const sigBuf = Buffer.from(signature || "");
+    const expBuf = Buffer.from(expected);
+    valid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
   } catch (err) {
     valid = false;
   }
