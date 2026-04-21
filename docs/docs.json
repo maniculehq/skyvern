@@ -166,6 +166,7 @@
             "pages": [
               "optimization/browser-sessions",
               "optimization/browser-profiles",
+              "optimization/browser-tunneling",
               "optimization/cost-control"
             ]
           },

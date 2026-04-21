@@ -37,6 +37,7 @@ Blocks are defined in the `workflow_definition.blocks` array. Use JSON when pass
 | [`print_page`](#print-page) | Save current page as PDF |
 | [`wait`](#wait) | Pause execution for a duration |
 | [`human_interaction`](#human-interaction) | Pause for human approval via email |
+| [`workflow_trigger`](#workflow-trigger) | Trigger another workflow as a sub-workflow |
 
 ---
 
@@ -585,6 +586,7 @@ Iterate over an array and execute nested blocks for each item.
 | `loop_over_parameter_key` | string | `""` | Parameter containing the array to iterate. |
 | `loop_variable_reference` | string | — | Custom name for the loop variable. |
 | `complete_if_empty` | boolean | `false` | If `true`, completes successfully when array is empty. |
+| `max_concurrency` | integer | `null` | Run iterations in parallel. `null` or `1` = sequential. `2`–`20` = number of concurrent iterations. Capped at 20. |
 
 <Info>
 **Accessing the current item inside a loop**
@@ -593,6 +595,29 @@ Use `{{nested_block_label.current_value}}` to reference the current iteration va
 
 In the example above, the loop label is `apply_to_jobs` and the nested block label is `submit_application`, so the current URL is accessed as `{{submit_application.current_value}}`.
 </Info>
+
+**Parallel execution**
+
+Set `max_concurrency` to run multiple iterations at the same time. This is useful when iterations are independent and you want to process a list faster:
+
+```json
+{
+  "block_type": "for_loop",
+  "label": "scrape_products",
+  "loop_over_parameter_key": "product_urls",
+  "max_concurrency": 5,
+  "loop_blocks": [
+    {
+      "block_type": "extraction",
+      "label": "get_price",
+      "url": "{{get_price.current_value}}",
+      "data_extraction_goal": "Extract the product name and price"
+    }
+  ]
+}
+```
+
+Use sequential (default) when iterations depend on each other or share browser state. Use parallel when each iteration visits an independent URL and the blocks inside don't reference previous-iteration outputs.
 
 The output of a `for_loop` block is an array containing the result from each iteration.
 
@@ -1157,6 +1182,106 @@ Pause the workflow and send an email requesting human approval before continuing
 | `instructions` | string | `"Please review and approve or reject to continue the workflow."` | Instructions shown in the approval interface. |
 | `positive_descriptor` | string | `"Approve"` | Label for the approval button. |
 | `negative_descriptor` | string | `"Reject"` | Label for the rejection button. |
+
+---
+
+## Workflow Trigger
+
+Trigger another workflow as a sub-workflow. Use this to compose large automations from smaller, independently maintainable workflows, or to fan out work across multiple workflows in parallel.
+
+<CodeGroup>
+```json JSON
+{
+  "block_type": "workflow_trigger",
+  "label": "run_invoice_processor",
+  "workflow_permanent_id": "wpid_abc123",
+  "payload": {
+    "vendor_name": "{{vendor_name}}",
+    "invoice_url": "{{download_invoice_output}}"
+  },
+  "wait_for_completion": true
+}
+```
+
+```yaml YAML
+- block_type: workflow_trigger
+  label: run_invoice_processor
+  workflow_permanent_id: wpid_abc123
+  payload:
+    vendor_name: "{{vendor_name}}"
+    invoice_url: "{{download_invoice_output}}"
+  wait_for_completion: true
+```
+</CodeGroup>
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow_permanent_id` | string | — | **Required.** The `wpid_` permanent ID of the workflow to trigger. |
+| `payload` | object | `null` | Parameters to pass to the triggered workflow. Values support Jinja2 templates, including the `\| json` filter for complex objects. |
+| `wait_for_completion` | boolean | `true` | If `true`, the parent workflow pauses until the child finishes. If `false`, the child is dispatched and the parent continues immediately (fire-and-forget). |
+| `browser_session_id` | string | `null` | Browser session to use for the triggered workflow. Overrides `use_parent_browser_session`. |
+| `use_parent_browser_session` | boolean | `false` | If `true`, the child workflow shares the parent's browser session — useful when the child needs to continue where the parent left off on the same page. |
+
+**Output shape (when `wait_for_completion: true`):**
+
+```json
+{
+  "workflow_run_id": "wr_...",
+  "workflow_permanent_id": "wpid_...",
+  "status": "completed",
+  "failure_reason": null,
+  "outputs": {
+    "extracted_total": 1250.00,
+    "invoice_count": 3
+  }
+}
+```
+
+The `outputs` object contains the child workflow's output parameters, keyed by their parameter names. Reference them in downstream blocks as `{{run_invoice_processor_output.outputs.extracted_total}}`.
+
+**Output shape (when `wait_for_completion: false`):**
+
+```json
+{
+  "workflow_run_id": "wr_...",
+  "workflow_permanent_id": "wpid_...",
+  "status": "queued"
+}
+```
+
+The parent block succeeds as soon as the child is queued. No output parameters from the child are available.
+
+<Warning>
+**Recursion limit.** Workflow triggers can be nested up to 10 levels deep. A chain deeper than 10 levels fails immediately with an error.
+</Warning>
+
+<Note>
+**Fire-and-forget on self-hosted.** When `wait_for_completion: false`, the child workflow is dispatched via Temporal. On self-hosted deployments without Temporal, the child workflow run record is created but execution is silently skipped. Use `wait_for_completion: true` on self-hosted setups, or confirm your deployment includes a Temporal worker.
+</Note>
+
+**Combining with For Loop for parallel fan-out:**
+
+Trigger multiple child workflows in parallel by nesting `workflow_trigger` inside a `for_loop` with `max_concurrency` set:
+
+```json
+{
+  "block_type": "for_loop",
+  "label": "process_all_vendors",
+  "loop_over_parameter_key": "vendors",
+  "max_concurrency": 5,
+  "loop_blocks": [
+    {
+      "block_type": "workflow_trigger",
+      "label": "process_vendor",
+      "workflow_permanent_id": "wpid_invoice_processor",
+      "payload": {
+        "vendor": "{{process_vendor.current_value}}"
+      },
+      "wait_for_completion": true
+    }
+  ]
+}
+```
 
 ---
 
