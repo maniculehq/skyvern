@@ -4,7 +4,7 @@ subtitle: Complete reference for all workflow block types
 slug: multi-step-automations/workflow-blocks-reference
 ---
 
-This page covers all block types available for building workflows.
+This page covers all 24 block types available for building workflows.
 
 Blocks are defined in the `workflow_definition.blocks` array. Use JSON when passing a `json_definition` or YAML when passing a `yaml_definition` — both formats are shown for every block below.
 
@@ -37,6 +37,7 @@ Blocks are defined in the `workflow_definition.blocks` array. Use JSON when pass
 | [`print_page`](#print-page) | Save current page as PDF |
 | [`wait`](#wait) | Pause execution for a duration |
 | [`human_interaction`](#human-interaction) | Pause for human approval via email |
+| [`workflow_trigger`](#workflow-trigger) | Trigger another workflow from within this workflow |
 
 ---
 
@@ -1157,6 +1158,71 @@ Pause the workflow and send an email requesting human approval before continuing
 | `instructions` | string | `"Please review and approve or reject to continue the workflow."` | Instructions shown in the approval interface. |
 | `positive_descriptor` | string | `"Approve"` | Label for the approval button. |
 | `negative_descriptor` | string | `"Reject"` | Label for the rejection button. |
+
+---
+
+## Workflow Trigger
+
+Trigger another workflow from within the current workflow. Use this to compose complex automations from smaller, reusable workflows.
+
+When `wait_for_completion: true` (the default), the parent workflow pauses until the triggered workflow finishes, then continues with the child's output available to downstream blocks. When `wait_for_completion: false`, the child workflow is dispatched in the background and the parent continues immediately.
+
+<CodeGroup>
+```json JSON
+{
+  "block_type": "workflow_trigger",
+  "label": "run_invoice_downloader",
+  "workflow_permanent_id": "wpid_your_workflow_id",
+  "payload": {
+    "vendor_name": "{{ extract_vendor_output.vendor_name }}",
+    "start_date": "2024-01-01"
+  },
+  "wait_for_completion": true
+}
+```
+
+```yaml YAML
+- block_type: workflow_trigger
+  label: run_invoice_downloader
+  workflow_permanent_id: wpid_your_workflow_id
+  payload:
+    vendor_name: "{{ extract_vendor_output.vendor_name }}"
+    start_date: "2024-01-01"
+  wait_for_completion: true
+```
+</CodeGroup>
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow_permanent_id` | string | — | **Required.** The `wpid_*` ID of the workflow to trigger. |
+| `payload` | object | `null` | Parameters to pass to the triggered workflow. Jinja2 templates in values are resolved against the parent's context before the call. |
+| `wait_for_completion` | boolean | `true` | If `true`, the parent workflow waits for the child to finish before continuing. If `false`, the child is dispatched in the background and the parent moves on immediately. |
+| `browser_session_id` | string | `null` | A specific browser session ID to pass to the triggered workflow. |
+| `use_parent_browser_session` | boolean | `false` | If `true`, the triggered workflow shares the parent's active browser session, which is useful when the child needs to continue from the same authenticated browser state. |
+
+**Block output (`{{ run_invoice_downloader_output }}`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workflow_run_id` | string | The run ID of the triggered workflow (`wr_*`) |
+| `workflow_permanent_id` | string | The workflow ID that was triggered |
+| `status` | string | Status of the triggered workflow. With `wait_for_completion: false`, always `queued`. |
+| `failure_reason` | string \| null | Error message if the triggered workflow failed |
+| `outputs` | object | The child workflow's named output parameters. Only present when `wait_for_completion: true`. |
+
+Reference child workflow outputs in downstream blocks using dot notation:
+
+```
+{{ run_invoice_downloader_output.outputs.extracted_data }}
+```
+
+<Warning>
+Workflow trigger chains are limited to 10 levels of nesting. Circular chains (workflow A triggers B which triggers A) are detected while A is still running and cause the trigger to fail.
+</Warning>
+
+<Note>
+Async mode (`wait_for_completion: false`) requires Temporal and is only available on Skyvern Cloud. On self-hosted deployments without Temporal, the child workflow run record is created but execution does not proceed.
+</Note>
 
 ---
 
