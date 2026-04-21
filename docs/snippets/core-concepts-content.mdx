@@ -188,28 +188,22 @@ print(result.output)   # {"heading": "Welcome"}
 
 A **Schedule** runs a workflow automatically on a recurring basis. You define a cron expression and timezone, and Skyvern triggers the workflow at each interval.
 
-<CodeGroup>
-```python Python
-result = await client.agent.create_workflow_schedule(
-    workflow_permanent_id="wpid_abc123",
-    cron_expression="0 9 * * 1-5",  # Weekdays at 9 AM
-    timezone="America/New_York",
-    parameters={
-        "url": "https://example.com/dashboard"
+```bash cURL
+curl -X POST "https://api.skyvern.com/v1/workflows/wpid_abc123/schedules" \
+  -H "x-api-key: $SKYVERN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cron_expression": "0 9 * * 1-5",
+    "timezone": "America/New_York",
+    "parameters": {
+      "url": "https://example.com/dashboard"
     }
-)
+  }'
 ```
 
-```typescript TypeScript
-const result = await skyvern.agent.createWorkflowSchedule("wpid_abc123", {
-  cron_expression: "0 9 * * 1-5", // Weekdays at 9 AM
-  timezone: "America/New_York",
-  parameters: {
-    url: "https://example.com/dashboard",
-  },
-});
-```
-</CodeGroup>
+<Note>
+Schedule management (create, list, update, delete) is only available via the REST API or the Skyvern Cloud UI. There is no Python or TypeScript SDK wrapper for schedule endpoints. See [Scheduling Workflows](/multi-step-automations/scheduling-workflows) for full details.
+</Note>
 
 **Key properties:**
 

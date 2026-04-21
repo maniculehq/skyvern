@@ -9,6 +9,10 @@ Define a cron expression and timezone, and Skyvern triggers the workflow at each
 
 Scheduled runs appear in your run history with `trigger_type: "scheduled"` so you can distinguish them from manual or API-triggered runs.
 
+<Note>
+Schedule management (create, list, update, delete) is only available via the REST API or the Skyvern Cloud UI. The Python and TypeScript SDKs do not include schedule methods — use cURL, httpx, or any HTTP client directly.
+</Note>
+
 ---
 
 ## How schedules work
@@ -71,36 +75,10 @@ Schedules use [IANA timezone identifiers](https://en.wikipedia.org/wiki/List_of_
 
 ## Create a schedule
 
-Send a `POST` request to `/api/v1/workflows/{workflow_permanent_id}/schedules` with your cron expression and timezone.
-
-<CodeGroup>
-```python Python
-import os
-import asyncio
-from skyvern import Skyvern
-
-async def main():
-    client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
-
-    result = await client.agent.create_workflow_schedule(
-        workflow_permanent_id="wpid_123456789",
-        cron_expression="0 9 * * 1-5",
-        timezone="America/New_York",
-        name="Weekday morning report",
-        description="Runs the data extraction workflow every weekday at 9 AM ET",
-        parameters={
-            "url": "https://example.com/dashboard",
-            "output_format": "csv"
-        }
-    )
-
-    print(f"Schedule ID: {result.schedule.workflow_schedule_id}")
-
-asyncio.run(main())
-```
+Send a `POST` request to `/v1/workflows/{workflow_permanent_id}/schedules` with your cron expression and timezone.
 
 ```bash cURL
-curl -X POST "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules" \
+curl -X POST "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules" \
   -H "x-api-key: $SKYVERN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -114,15 +92,6 @@ curl -X POST "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules"
     }
   }'
 ```
-</CodeGroup>
-
-<Info>
-All Python examples on this page assume you've initialized the client as shown above:
-
-```python
-client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
-```
-</Info>
 
 ### Request body
 
@@ -191,20 +160,10 @@ Workflow runs triggered by this schedule will include `trigger_type: "scheduled"
 
 To list all schedules in your organization:
 
-<CodeGroup>
-```python Python
-result = await client.agent.list_organization_schedules()
-
-for schedule in result.schedules:
-    status = "active" if schedule.enabled else "paused"
-    print(f"{schedule.workflow_schedule_id}: {schedule.name} ({status})")
-```
-
 ```bash cURL
-curl -X GET "https://api.skyvern.com/api/v1/schedules" \
+curl -X GET "https://api.skyvern.com/v1/schedules" \
   -H "x-api-key: $SKYVERN_API_KEY"
 ```
-</CodeGroup>
 
 ### Example response
 
@@ -249,18 +208,10 @@ curl -X GET "https://api.skyvern.com/api/v1/schedules" \
 
 To list schedules for a specific workflow:
 
-<CodeGroup>
-```python Python
-result = await client.agent.list_workflow_schedules(
-    workflow_permanent_id="wpid_123456789"
-)
-```
-
 ```bash cURL
-curl -X GET "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules" \
+curl -X GET "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules" \
   -H "x-api-key: $SKYVERN_API_KEY"
 ```
-</CodeGroup>
 
 ---
 
@@ -268,21 +219,10 @@ curl -X GET "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules" 
 
 Retrieve a single schedule, including upcoming run times in `next_runs`.
 
-<CodeGroup>
-```python Python
-result = await client.agent.get_workflow_schedule(
-    workflow_permanent_id="wpid_123456789",
-    workflow_schedule_id="wfs_abc123"
-)
-
-print(f"Next runs: {result.next_runs}")
-```
-
 ```bash cURL
-curl -X GET "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules/wfs_abc123" \
+curl -X GET "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules/wfs_abc123" \
   -H "x-api-key: $SKYVERN_API_KEY"
 ```
-</CodeGroup>
 
 The response has the same shape as the [create response](#example-response) — a `schedule` object with a `next_runs` array.
 
@@ -292,20 +232,8 @@ The response has the same shape as the [create response](#example-response) — 
 
 Change the cron expression, timezone, name, description, or parameters.
 
-<CodeGroup>
-```python Python
-result = await client.agent.update_workflow_schedule(
-    workflow_permanent_id="wpid_123456789",
-    workflow_schedule_id="wfs_abc123",
-    cron_expression="0 8 * * 1-5",
-    timezone="America/Chicago",
-    name="Updated morning report",
-    description="Updated description"
-)
-```
-
 ```bash cURL
-curl -X PUT "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules/wfs_abc123" \
+curl -X PUT "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules/wfs_abc123" \
   -H "x-api-key: $SKYVERN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -315,7 +243,6 @@ curl -X PUT "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules/w
     "description": "Updated description"
   }'
 ```
-</CodeGroup>
 
 <Warning>
 Updates **replace** all fields — any optional field you omit (like `description` or `parameters`) will be set to `null`. Re-send all fields you want to keep.
@@ -329,31 +256,15 @@ The response has the same shape as the [create response](#example-response).
 
 You can pause a schedule by disabling it. Compared to deleting a schedule, this keeps its configuration saved to be re-enabled at any time.
 
-<CodeGroup>
-```python Python
-# Disable
-await client.agent.disable_workflow_schedule(
-    workflow_permanent_id="wpid_123456789",
-    workflow_schedule_id="wfs_abc123"
-)
-
-# Re-enable
-await client.agent.enable_workflow_schedule(
-    workflow_permanent_id="wpid_123456789",
-    workflow_schedule_id="wfs_abc123"
-)
-```
-
 ```bash cURL
 # Disable
-curl -X POST "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules/wfs_abc123/disable" \
+curl -X POST "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules/wfs_abc123/disable" \
   -H "x-api-key: $SKYVERN_API_KEY"
 
 # Re-enable
-curl -X POST "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules/wfs_abc123/enable" \
+curl -X POST "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules/wfs_abc123/enable" \
   -H "x-api-key: $SKYVERN_API_KEY"
 ```
-</CodeGroup>
 
 Both endpoints return the same shape as the [create response](#example-response), with `enabled` set to `false` or `true`.
 
@@ -363,19 +274,10 @@ Both endpoints return the same shape as the [create response](#example-response)
 
 Permanently remove a schedule. This cannot be undone. Runs that were already triggered by this schedule are not affected.
 
-<CodeGroup>
-```python Python
-await client.agent.delete_workflow_schedule_route(
-    workflow_permanent_id="wpid_123456789",
-    workflow_schedule_id="wfs_abc123"
-)
-```
-
 ```bash cURL
-curl -X DELETE "https://api.skyvern.com/api/v1/workflows/wpid_123456789/schedules/wfs_abc123" \
+curl -X DELETE "https://api.skyvern.com/v1/workflows/wpid_123456789/schedules/wfs_abc123" \
   -H "x-api-key: $SKYVERN_API_KEY"
 ```
-</CodeGroup>
 
 ### Example response
 

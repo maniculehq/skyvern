@@ -8,7 +8,7 @@ Skyvern detects CAPTCHAs using its vision model and solves them automatically.
 
 However, CAPTCHA solving is not guaranteed. Skyvern's solvers can fail on novel challenges or rate-limited IPs.
 
-This guide helps you detect CAPTCHA failures and implement fallbacks to keep your automation running smoothly.
+When solving fails, use `error_code_mapping` to catch CAPTCHA failures and implement fallbacks.
 
 **Supported CAPTCHA types:**
 

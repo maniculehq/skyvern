@@ -74,7 +74,7 @@ curl -X POST "https://api.skyvern.com/v1/browser_sessions" \
 |-----------|------|-------------|
 | `timeout` | integer | Session lifetime in minutes. Min: 5, Max: 1440 (24 hours). Default: `60` |
 | `proxy_location` | string | Geographic proxy location (Cloud only). See [Proxy & Geolocation](/going-to-production/proxy-geolocation) for available options |
-| `browser_type` | string | Browser type: `chrome` or `msedge` |
+| `browser_type` | string | Browser type: `chrome`, `msedge`, or `stealth-chromium` |
 | `extensions` | array | Extensions to install: `ad-blocker`, `captcha-solver` |
 
 **Example response:**
