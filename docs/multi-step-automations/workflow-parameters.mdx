@@ -765,6 +765,73 @@ Additional advanced parameters are available when running a workflow, including 
 
 ---
 
+## Reserved parameter keys
+
+The following names are reserved by the workflow engine and cannot be used as keys for workflow or output parameters. They are automatically injected at runtime and accessible in any block's Jinja2 template fields.
+
+| Key | Available in | Format / Value | Description |
+|-----|-------------|----------------|-------------|
+| `current_value` | `for_loop` blocks | varies | The current iteration item. If iterating a list of strings, this is the string. If iterating a list of objects, this is the object. |
+| `current_item` | `for_loop` blocks | varies | Alias for `current_value`. |
+| `current_index` | `for_loop` blocks | integer (0-based) | Zero-based index of the current iteration. |
+| `current_date` | All blocks | `YYYY-MM-DD` string | Today's date in UTC at run start. No setup required. |
+| `workflow_run_id` | All blocks | `wr_…` string | Unique ID of the current workflow run. |
+| `workflow_id` | All blocks | `wpid_…` string | The workflow's version-specific ID. |
+| `workflow_permanent_id` | All blocks | `wpid_…` string | The workflow's permanent ID (same across versions). |
+| `workflow_title` | All blocks | string | The workflow's display title. |
+| `workflow_run_outputs` | All blocks | object | Map of `label → output` for all blocks that have completed so far. |
+| `workflow_run_summary` | All blocks | string/null | A summary of the workflow run, if generated. |
+
+**Example: using `current_date` without any parameter definition**
+
+```yaml
+- block_type: navigation
+  label: find_report
+  navigation_goal: "Download the daily report for {{ current_date }}"
+```
+
+**Example: using `current_index` to label items**
+
+```yaml
+- block_type: code
+  label: tag_item
+  parameter_keys: []
+  code: |
+    result = {"label": f"Item {current_index + 1}"}
+```
+
+**Why this matters:** Attempting to define a workflow parameter with any of these keys raises an `InvalidWorkflowParameter` error at workflow creation time, not at run time. If your workflow creation call fails with a parameter validation error, check this list first.
+
+---
+
+## Jinja2 templating tips
+
+### Injecting native types with `| json`
+
+By default, Jinja2 renders all values as strings. When you embed a workflow parameter in a JSON field that expects a boolean, integer, or array, use the `| json` filter to inject the native type:
+
+```yaml
+# Without | json: the string "True" is injected, which may not parse as a boolean
+navigation_goal: "Is premium: {{ is_premium }}"
+
+# With | json: the literal true boolean is injected into the JSON structure
+data_schema:
+  is_premium: "{{ is_premium | json }}"
+```
+
+The `| json` filter is especially useful when:
+- Passing a boolean flag extracted from a prior block into a JSON schema field
+- Injecting a list of values (e.g., `{{ product_ids | json }}` renders as `["id1", "id2"]` not `"['id1', 'id2']"`)
+- Passing integers without quoting (e.g., `{{ page_count | json }}` renders as `5` not `"5"`)
+
+### Undefined variable behavior
+
+The default templating mode (`lax`) renders undefined variables as empty strings. This means a typo in a template key produces silent empty output, not an error.
+
+For self-hosted deployments, set `WORKFLOW_TEMPLATING_STRICTNESS=strict` to raise an error on any undefined variable. This is recommended for production workflows where silent data loss is worse than a visible failure.
+
+---
+
 ## Run response
 
 When you run a workflow, the response contains:

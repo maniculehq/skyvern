@@ -583,8 +583,9 @@ Iterate over an array and execute nested blocks for each item.
 |-----------|------|---------|-------------|
 | `loop_blocks` | array | — | **Required.** Blocks to execute for each iteration. |
 | `loop_over_parameter_key` | string | `""` | Parameter containing the array to iterate. |
-| `loop_variable_reference` | string | — | Custom name for the loop variable. |
-| `complete_if_empty` | boolean | `false` | If `true`, completes successfully when array is empty. |
+| `loop_variable_reference` | string | — | Dot-path into a prior block's output (e.g. `extract_rows_output.extracted_information.rows`). Use instead of `loop_over_parameter_key` when iterating a nested field. |
+| `complete_if_empty` | boolean | `false` | If `true`, completes successfully when the array is empty. If `false` and the array is empty, the block fails. |
+| `max_concurrency` | integer | `null` | Number of iterations to run in parallel. `null` or `1` = sequential (default). `2`–`20` = parallel batch size (clamped). |
 
 <Info>
 **Accessing the current item inside a loop**
@@ -592,9 +593,35 @@ Iterate over an array and execute nested blocks for each item.
 Use `{{nested_block_label.current_value}}` to reference the current iteration value, where `nested_block_label` is the `label` of the block **inside** `loop_blocks` — not the label of the `for_loop` itself.
 
 In the example above, the loop label is `apply_to_jobs` and the nested block label is `submit_application`, so the current URL is accessed as `{{submit_application.current_value}}`.
+
+Use `{{nested_block_label.current_index}}` for the zero-based iteration index.
 </Info>
 
-The output of a `for_loop` block is an array containing the result from each iteration.
+### Parallel iteration
+
+Set `max_concurrency` to run multiple iterations simultaneously. This is useful for high-throughput, independent tasks like scraping a list of product pages:
+
+```json
+{
+  "block_type": "for_loop",
+  "label": "scrape_products",
+  "loop_over_parameter_key": "product_urls",
+  "max_concurrency": 5,
+  "loop_blocks": [
+    {
+      "block_type": "extraction",
+      "label": "get_price",
+      "url": "{{get_price.current_value}}",
+      "data_extraction_goal": "Extract the current price",
+      "data_schema": { "price": { "type": "number" } }
+    }
+  ]
+}
+```
+
+**When not to use parallel iteration:** Sites that rate-limit by IP or session, or workflows where each iteration depends on the previous one's output (e.g. pagination where you need the next-page token). Use sequential execution (`max_concurrency: 1`) for those cases.
+
+The output of a `for_loop` block is an array containing one result per iteration, in input order even when run in parallel.
 
 ---
 
@@ -980,10 +1007,41 @@ Execute custom Python code for data transformation or browser control.
 | `code` | string | — | **Required.** Python code to execute. Store result in `result` variable. |
 | `parameter_keys` | array | — | Parameters available to the code. |
 
-Available objects: `skyvern_page` (Playwright page object for browser control).
+### Sandbox environment
+
+Code blocks run in a restricted Python sandbox — not a standard interpreter. The restrictions exist for security and are enforced at two levels: static AST analysis (before execution) and a limited set of allowed builtins (at runtime).
+
+**No imports allowed.** Any `import` or `from … import` statement raises `InsecureCodeDetected` before the code runs. All functionality must come from the pre-injected objects listed below.
+
+**Available builtins:**
+
+| Object | Type | Notes |
+|--------|------|-------|
+| `print` | function | Standard print (for debugging) |
+| `len`, `range` | functions | Standard Python builtins |
+| `str`, `int`, `float`, `bool` | types | Standard type constructors |
+| `dict`, `list`, `tuple`, `set` | types | Standard collection constructors |
+| `Exception` | class | Base exception class |
+| `sleep` | coroutine | `asyncio.sleep` — await to pause |
+| `asyncio.sleep` | coroutine | Same as `sleep` |
+| `re.match`, `re.search`, `re.findall`, `re.sub`, `re.compile`, `re.split` | functions | Regex operations |
+| `re.IGNORECASE`, `re.MULTILINE`, `re.DOTALL` | flags | Regex flags |
+| `json.dumps`, `json.loads` | functions | JSON serialisation / deserialisation |
+| `page` | Playwright `Page` | Live browser page (Cloud invite-only) |
+
+**Blocked operations** (raise `InsecureCodeDetected`):
+
+- Dunder attribute access (`obj.__class__`, `__builtins__`, etc.)
+- Subprocess creation (`os.system`, `subprocess.Popen`, `asyncio.create_subprocess_exec`, etc.)
+- Raw network sockets (`asyncio.open_connection`, `asyncio.create_connection`)
+- Filesystem traversal (`listdir`, `makedirs`, `rmdir`)
+- Class hierarchy escape (`mro`)
+- `getattr`, `setattr`, `delattr`, `globals`, `eval`, `vars`
+
+**Workflow parameters** listed in `parameter_keys` are injected as top-level variables. For example, `"parameter_keys": ["invoice_date"]` makes `invoice_date` available directly in your code.
 
 <Note>
-Code Block with browser control is invite-only on Skyvern Cloud. Contact support@skyvern.com for access.
+The Playwright `page` object (browser control) is invite-only on Skyvern Cloud. Contact support@skyvern.com for access. All other sandbox features are available without restrictions.
 </Note>
 
 ---

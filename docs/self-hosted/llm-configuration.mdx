@@ -521,6 +521,27 @@ Most deployments don't need task-specific models. Start with `LLM_KEY` and `SECO
 
 ---
 
+## Workflow templating behavior
+
+### `WORKFLOW_TEMPLATING_STRICTNESS`
+
+Controls how the Jinja2 template engine handles undefined variables in workflow block fields (prompts, URLs, parameters).
+
+| Value | Behavior |
+|-------|----------|
+| `lax` (default) | Undefined variables render as empty strings. A typo in `{{ my_param }}` silently produces `""`. |
+| `strict` | Undefined variables raise an error immediately. The block fails rather than producing silent empty output. |
+
+```bash .env
+WORKFLOW_TEMPLATING_STRICTNESS=strict
+```
+
+**Recommendation:** Use `strict` for production workflows. Undefined variables are almost always bugs (parameter name typo, missing `parameter_keys` entry, or a prior block that didn't produce expected output). Silent empty strings produce confusing AI behavior — the agent receives an empty goal or URL and may navigate randomly before timing out. Strict mode surfaces these bugs immediately with a clear error message.
+
+**When `lax` is useful:** During initial development when you intentionally leave placeholders undefined, or when a template field is truly optional and should be skipped when the variable is absent.
+
+---
+
 ## Troubleshooting
 
 ### "To enable svg shape conversion, please set the Secondary LLM key"
