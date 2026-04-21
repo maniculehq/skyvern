@@ -660,6 +660,53 @@ If `verify_login` sees a login error, the workflow terminates with `output.error
 
 ---
 
+## Failure categories
+
+Skyvern internally classifies `failure_reason` text into categories. These categories are not exposed as a separate API field, but understanding them helps you interpret `failure_reason` and design better error recovery.
+
+The classifier (`skyvern/forge/failure_classifier.py`) recognizes these categories, sorted by confidence:
+
+| Category | Keywords in `failure_reason` | Recovery strategy |
+|----------|------------------------------|-------------------|
+| `ANTI_BOT_DETECTION` | `captcha`, `cloudflare`, `bot detect`, `ip block`, `human verification`, `access denied` (without auth context) | Use `RESIDENTIAL_ISP` proxy, browser profile, or `human_interaction` block |
+| `BROWSER_ERROR` | `browser context closed`, `page closed`, `browser crash` | Retry — usually transient; contact support if persistent |
+| `NAVIGATION_FAILURE` | `failed to navigate`, `404`, `redirect loop` | Check the URL, verify the site is accessible |
+| `PAGE_LOAD_TIMEOUT` | `timeout` | Use a simpler starting URL; check if the site is slow; increase `max_steps` |
+| `AUTH_FAILURE` | `login fail`, `authentication fail`, `mfa`, `password`, `access denied` (with auth context) | Refresh or verify credentials; configure TOTP |
+| `CREDENTIAL_ERROR` | `credential not found`, `missing credential` | Check that the credential ID exists and is accessible |
+| `LLM_ERROR` | `rate limit`, `LLM`, `APIError`, `RateLimit` | Retry after a delay; check LLM provider status |
+| `DATA_EXTRACTION_FAILURE` | `scraping`, `extraction fail`, `empty extraction` | Refine `data_extraction_schema`; check if the target page requires JavaScript |
+| `ELEMENT_NOT_FOUND` | `element not found`, `no matching element` | Describe elements visually in your prompt; add scroll instructions |
+| `WRONG_PAGE_STATE` | `unexpected page`, `wrong page`, `blank page` | Add navigation steps to reach the correct page; check starting URL |
+| `MAX_STEPS_EXCEEDED` | `max steps`, `maximum steps`, `step limit` | Increase `max_steps`, simplify the prompt, or break into multiple blocks |
+| `LLM_REASONING_ERROR` | `wrong action`, `invalid action`, `hallucin` | Refine the prompt to be more explicit about the goal and completion criteria |
+| `UNKNOWN` | (no keyword match on explicit failure paths) | Inspect `recording` and `screenshot_final` artifacts; contact support |
+
+**How to use this table:** When a run fails, copy the `failure_reason` text and look for the keywords above to identify the category. Then follow the recovery strategy.
+
+```python
+failure_reason = run.failure_reason or ""
+failure_lower = failure_reason.lower()
+
+# Quick category detection from failure_reason
+if any(kw in failure_lower for kw in ["captcha", "cloudflare", "bot detect", "ip block"]):
+    category = "ANTI_BOT_DETECTION"
+elif any(kw in failure_lower for kw in ["login fail", "authentication fail", "mfa", "password"]):
+    category = "AUTH_FAILURE"
+elif any(kw in failure_lower for kw in ["max steps", "step limit"]):
+    category = "MAX_STEPS_EXCEEDED"
+elif "timeout" in failure_lower:
+    category = "PAGE_LOAD_TIMEOUT"
+else:
+    category = "UNKNOWN"
+```
+
+<Note>
+For programmatic error routing, `error_code_mapping` (described above) gives you full control over error codes. The failure categories are a reference for interpreting raw `failure_reason` text when no mapping is configured.
+</Note>
+
+---
+
 ## Common error patterns
 
 | Error Code | Description | Typical Response |

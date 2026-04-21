@@ -253,6 +253,39 @@ For self-hosted deployments, you can also swap the underlying LLM to a cheaper m
 
 ---
 
+## Split work across multiple LLM tiers
+
+On self-hosted deployments, Skyvern makes different types of LLM calls per step — screenshot analysis, action planning, data extraction, script generation. You can route each category to a different (cheaper) model using environment variables:
+
+| Variable | Purpose | When to use a cheaper model |
+|----------|---------|------------------------------|
+| `LLM_KEY` | Primary model for all decisions | Always configure; use your best model |
+| `SECONDARY_LLM_KEY` | Lightweight operations (dropdown selection, simple decisions) | Set to a fast, cheap model like `OPENAI_GPT4O_MINI` or `ANTHROPIC_CLAUDE3.5_HAIKU` |
+| `EXTRACTION_LLM_KEY` | Structured data extraction from pages | A fast model with good instruction-following works here |
+| `SCRIPT_GENERATION_LLM_KEY` | Generating Python automation scripts for caching | Code-capable models like `OPENAI_GPT5` work well |
+
+Example configuration for cost-optimized self-hosted deployment:
+
+```bash .env
+# High-capability model for complex decisions
+LLM_KEY=ANTHROPIC_CLAUDE4.5_SONNET
+
+# Cheap model for simple tasks (dropdown parsing, quick yes/no)
+SECONDARY_LLM_KEY=ANTHROPIC_CLAUDE3.5_HAIKU
+
+# Dedicated extraction model
+EXTRACTION_LLM_KEY=OPENAI_GPT4O_MINI
+
+# Code-capable model for script generation
+SCRIPT_GENERATION_LLM_KEY=OPENAI_GPT4O
+```
+
+<Note>
+`SECONDARY_LLM_KEY` is required for some operations (SVG shape conversion, certain select-element interactions). If you see "To enable svg shape conversion, please set the Secondary LLM key" errors, set `SECONDARY_LLM_KEY` to any vision-capable model.
+</Note>
+
+---
+
 ## Write better prompts
 
 Small prompt changes can cut step count significantly.

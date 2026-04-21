@@ -356,6 +356,26 @@ See [Using Artifacts](/debugging/using-artifacts) for the full list of artifact 
 
 ---
 
+## What Skyvern doesn't handle well
+
+Understanding current limitations helps you design better automations and avoid wasted debugging time.
+
+| Limitation | Workaround |
+|-----------|-----------|
+| **Shadow DOM / Web Components** | Elements inside closed shadow roots are not visible to the DOM scraper. Look for alternative selectors or use the Code block with `page.evaluate()` to pierce shadows. |
+| **Canvas and WebGL content** | Drawing surfaces (charts, graphics editors, maps) are captured as images but individual interactive elements inside them are not detected. Use the site's export/download features instead of trying to interact with canvas elements. |
+| **Drag-and-drop interactions** | Not natively supported. Use the Code block with Playwright's `drag_and_drop` if browser-control access is enabled. Otherwise, look for keyboard alternatives (arrow keys, cut/paste). |
+| **File pickers (`<input type="file">`)** | The AI cannot open the OS file picker. Pass files via public URLs using the `file_url` workflow parameter type and upload workflows that fetch from URLs. |
+| **Browser extensions with overlapping UIs** | Extensions that render overlays on pages can confuse element detection. Avoid loading unnecessary extensions. Only use `ad-blocker` or `captcha-solver` when needed. |
+| **Infinite scroll / virtual lists** | Only visible content is in the DOM. Use `max_screenshot_scrolls` to scroll before extraction, or iterate page by page rather than loading everything at once. |
+| **Two-column address autocomplete** | City/state linked selectors where choosing a city auto-fills the state (or vice versa) can cause the AI to override already-correct values. Be explicit: "select Toronto from the city dropdown; do not change the Province field after selecting the city." |
+| **Sites requiring WebSocket data** | Pages that show real-time data via WebSocket (live prices, live chat) show a loading state or stale data when the scraper captures them. Add a `wait` block before extraction to allow data to load. |
+| **Printing to physical printers** | Not supported. Use `print_page` to save as PDF, then route the PDF file as needed. |
+
+These are known architectural constraints, not bugs. Filing a support ticket for these cases will not produce a fix — design your workflow around them.
+
+---
+
 ## Next steps
 
 <CardGroup cols={2}>

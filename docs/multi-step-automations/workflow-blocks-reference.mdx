@@ -55,7 +55,12 @@ These parameters are available on all block types:
 
 ### Finally block
 
-You can designate any block as a "finally" block that always executes when the workflow ends — whether it completed, failed, terminated, or timed out. The only exception is explicit cancellation.
+You can designate any block as a "finally" block that always executes when the workflow ends — whether it completed, failed, terminated, or timed out. The only exception is explicit cancellation via the API (`POST /v1/runs/{run_id}/cancel`).
+
+**Use cases for finally blocks:**
+- Send a notification email regardless of success or failure
+- Close browser sessions or clean up resources
+- Log workflow outcomes to an external system
 
 Set `finally_block_label` at the workflow definition level (alongside `parameters` and `blocks`):
 
@@ -586,6 +591,28 @@ Iterate over an array and execute nested blocks for each item.
 | `loop_over_parameter_key` | string | `""` | Parameter containing the array to iterate. |
 | `loop_variable_reference` | string | — | Custom name for the loop variable. |
 | `complete_if_empty` | boolean | `false` | If `true`, completes successfully when array is empty. |
+| `max_concurrency` | integer | `null` | Run iterations in parallel. `null` or `1` = sequential. `2`–`20` = parallel batch size. |
+
+<Info>
+**Running loop iterations in parallel**
+
+Set `max_concurrency` to a value between 2 and 20 to process multiple items simultaneously. Each value in the array runs in its own browser context. This is useful for bulk operations like downloading invoices for 50 vendors — instead of running one at a time, you can run 5 concurrently.
+
+```yaml
+- block_type: for_loop
+  label: download_reports
+  loop_over_parameter_key: vendor_list
+  max_concurrency: 5  # Process 5 vendors at a time
+  continue_on_failure: true
+  loop_blocks:
+    - block_type: navigation
+      label: download_report
+      url: "{{download_report.current_value.portal_url}}"
+      navigation_goal: "Download the latest invoice"
+```
+
+**When NOT to use `max_concurrency`:** Avoid it when iterations share state (same browser session, same login) or when the target site rate-limits by IP. Sequential runs are safer for human-in-the-loop workflows.
+</Info>
 
 <Info>
 **Accessing the current item inside a loop**
@@ -593,6 +620,35 @@ Iterate over an array and execute nested blocks for each item.
 Use `{{nested_block_label.current_value}}` to reference the current iteration value, where `nested_block_label` is the `label` of the block **inside** `loop_blocks` — not the label of the `for_loop` itself.
 
 In the example above, the loop label is `apply_to_jobs` and the nested block label is `submit_application`, so the current URL is accessed as `{{submit_application.current_value}}`.
+
+**When the loop item is an object (dict):** Each key from the object is accessible as a field on `current_value`:
+
+```yaml
+- block_type: for_loop
+  label: process_vendors
+  loop_over_parameter_key: vendors   # e.g. [{"name": "Acme", "portal_url": "https://..."}]
+  loop_blocks:
+    - block_type: navigation
+      label: vendor_step
+      url: "{{vendor_step.current_value.portal_url}}"
+      navigation_goal: "Download the invoice for {{vendor_step.current_value.name}}"
+```
+
+**Renaming the loop variable:** Use `loop_variable_reference` to give the current item a more readable name instead of `{label}.current_value`. Set it in the for_loop block, then reference it by that name in nested blocks:
+
+```yaml
+- block_type: for_loop
+  label: process_vendors
+  loop_over_parameter_key: vendors
+  loop_variable_reference: current_vendor   # accessible as {{current_vendor}}
+  loop_blocks:
+    - block_type: navigation
+      label: vendor_step
+      url: "{{current_vendor.portal_url}}"
+      navigation_goal: "Download the invoice for {{current_vendor.name}}"
+```
+
+**Handling empty arrays:** By default, a `for_loop` over an empty array fails. Set `complete_if_empty: true` to treat an empty array as a successful no-op instead of a failure — useful when the array is fetched dynamically and may legitimately be empty.
 </Info>
 
 The output of a `for_loop` block is an array containing the result from each iteration.
@@ -888,6 +944,33 @@ Make HTTP API calls to external services.
 | `save_response_as_file` | boolean | `false` | Save response body as a file. |
 | `parameter_keys` | array | — | Parameters this block can access. |
 
+**Common patterns:**
+
+Use `http_request` to fetch data from an API and pass it to a `for_loop`:
+
+```yaml
+- block_type: http_request
+  label: fetch_orders
+  method: GET
+  url: "https://api.example.com/orders?status=pending"
+  headers:
+    Authorization: "Bearer {{api_token}}"
+
+- block_type: for_loop
+  label: process_orders
+  loop_over_parameter_key: fetch_orders_output   # array returned by the HTTP block
+  loop_blocks:
+    - block_type: navigation
+      label: open_order
+      url: "{{open_order.current_value.portal_url}}"
+      navigation_goal: "Download the order PDF"
+```
+
+**Limitations:**
+- Streaming responses are not supported — the block waits for the full response body.
+- `files` (multipart upload) can reference `SKYVERN_DOWNLOAD_DIRECTORY` for files downloaded during the workflow, but cannot read arbitrary files from disk.
+- The 30-second default timeout is suitable for most REST APIs. For slow endpoints, increase `timeout` up to a reasonable limit — very long timeouts block the workflow step.
+
 ---
 
 ## Send Email
@@ -981,10 +1064,64 @@ Execute custom Python code for data transformation or browser control.
 | `code` | string | — | **Required.** Python code to execute. Store result in `result` variable. |
 | `parameter_keys` | array | — | Parameters available to the code. |
 
-Available objects: `skyvern_page` (Playwright page object for browser control).
+### Code block sandbox
+
+The Code block runs in a restricted Python sandbox. Only the following names are available — you cannot use `import` statements.
+
+**Available built-ins:**
+
+| Name | Type | Notes |
+|------|------|-------|
+| `page` | Playwright `Page` | Live browser page. Requires browser-control access (see note below). |
+| `len`, `range`, `str`, `int`, `float`, `dict`, `list`, `tuple`, `set`, `bool` | Python built-ins | Standard Python types. |
+| `print` | function | Writes to the Skyvern log. Visible in `skyvern_log` artifact. |
+| `sleep` | `async` function | `await sleep(seconds)` — pauses execution. |
+| `asyncio.sleep` | `async` function | Alias for `sleep`. |
+| `re` | module-like | `re.match`, `re.search`, `re.findall`, `re.sub`, `re.compile`, `re.split`, flags. |
+| `json` | module-like | `json.dumps`, `json.loads`. |
+| `Exception` | class | For raising or catching exceptions. |
+| Each `parameter_key` | any | Values of the parameters listed in `parameter_keys`. |
+
+**Security restrictions:**
+- `import` statements are blocked entirely.
+- Dunder attributes (`__foo__`) are blocked.
+- OS, subprocess, network, and filesystem operations are blocked (e.g. `system`, `popen`, `listdir`, `open_connection`).
+
+**Using the browser page:**
+
+The `page` variable is the live Playwright `Page` object. Use it to interact with the browser directly.
+
+```yaml
+- block_type: code
+  label: press_escape
+  code: |
+    await page.keyboard.press("Escape")
+    result = {"escaped": True}
+```
+
+```yaml
+- block_type: code
+  label: scroll_to_bottom
+  code: |
+    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    await sleep(1)
+    result = {"scrolled": True}
+```
+
+```yaml
+- block_type: code
+  label: wait_for_element
+  code: |
+    # Wait up to 5 seconds for a specific element to appear
+    await page.wait_for_selector(".confirmation-message", timeout=5000)
+    text = await page.inner_text(".confirmation-message")
+    result = {"confirmation": text}
+```
+
+**Tip:** The `result` variable is what the block outputs. It can be any JSON-serializable value (`dict`, `list`, `str`, `int`, `bool`, `None`). If you never assign `result`, the block output is `None`.
 
 <Note>
-Code Block with browser control is invite-only on Skyvern Cloud. Contact support@skyvern.com for access.
+`page` access (browser control) is invite-only on Skyvern Cloud. Code blocks that don't use `page` (data transformation, string processing, arithmetic) are available to all plans. Contact support@skyvern.com for browser-control access.
 </Note>
 
 ---

@@ -301,7 +301,7 @@ For applications that genuinely require keyboard shortcuts with no UI alternativ
 - block_type: code
   label: press_escape
   code: |
-    page = context["skyvern_page"].page
+    # `page` is the live Playwright Page object — available directly in Code blocks
     await page.keyboard.press("Escape")
     result = {"escaped": True}
 ```

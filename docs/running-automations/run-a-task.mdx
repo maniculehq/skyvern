@@ -310,7 +310,7 @@ The response from polling (`get_run`) and webhooks have slightly different struc
 | `failure_reason` | string \| null | Error message if the run failed |
 | `errors` | array | List of errors encountered |
 | `step_count` | integer \| null | Number of steps executed |
-| `run_type` | string | Type of run: `task_v2`, `openai_cua`, `anthropic_cua` |
+| `run_type` | string | Type of run. See table below. |
 | `app_url` | string | Link to view this run in Skyvern Cloud |
 | `created_at` | datetime | When the run was created |
 | `modified_at` | datetime | When the run was last updated |
@@ -326,7 +326,54 @@ The response from polling (`get_run`) and webhooks have slightly different struc
 | `browser_session_id` | string \| null | ID of the browser session used |
 | `browser_profile_id` | string \| null | ID of the browser profile used |
 | `max_screenshot_scrolls` | integer \| null | Number of scrolls for screenshots |
-| `script_run` | object \| null | Script run result if AI fallback triggered |
+| `script_run` | object \| null | Present when a generated script ran (code-generation mode). Contains `script_run_id` and `ai_fallback` (whether the AI agent took over when script failed). |
+
+**The `errors` array:**
+
+The `errors` array contains per-step errors that occurred during execution. Even a `completed` run can have non-empty `errors` if the agent recovered from an error mid-task. Each entry has this shape:
+
+```json
+{
+  "run_id": "tsk_v2_486305187432193504",
+  "status": "completed",
+  "errors": [
+    {
+      "error_type": "ELEMENT_NOT_FOUND",
+      "error_message": "Could not locate the Submit button on the page",
+      "step_id": "stp_486305250466869112",
+      "retried": true
+    }
+  ]
+}
+```
+
+If `retried: true`, the agent encountered the error but recovered and continued. If `retried: false`, the error contributed to the final failure state. Use `errors` for debugging step-level issues — the `failure_reason` on the run itself describes the terminal outcome, while `errors` shows what went wrong along the way.
+
+**`run_type` values:**
+
+| Value | When you see it |
+|-------|----------------|
+| `task_v2` | Default for tasks run via `POST /v1/run/tasks` |
+| `task_v1` | Legacy tasks (uncommon; created via the older v1 API) |
+| `openai_cua` | Task run with the `openai-cua` engine (OpenAI Computer Use Agent) |
+| `anthropic_cua` | Task run with the `anthropic-cua` engine (Anthropic Computer Use Agent) |
+| `ui_tars` | Task run with the `ui-tars` engine (ByteDance UI-TARS model) |
+| `workflow_run` | Workflow runs returned from `GET /v1/runs` alongside task runs |
+
+To use a CUA engine, pass `engine` when creating the task:
+
+```bash
+curl -X POST "https://api.skyvern.com/v1/run/tasks" \
+  -H "x-api-key: $SKYVERN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Book the cheapest flight from NYC to LAX next Tuesday",
+    "url": "https://google.com/flights",
+    "engine": "anthropic-cua"
+  }'
+```
+
+CUA engines (`openai-cua`, `anthropic-cua`, `ui-tars`) delegate browser control directly to the respective model's native computer-use capability rather than Skyvern's own perception-action loop. This is useful when a specific model's built-in web navigation performs better for your task. CUA runs have the same response shape and status lifecycle as standard tasks.
 
 **Webhook-only fields:**
 

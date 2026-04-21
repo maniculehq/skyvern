@@ -286,6 +286,63 @@ Skyvern uses standard JSON Schema. Common types:
 A schema doesn't guarantee all fields are populated. If the data isn't on the page, fields return `null`. Design your code to handle missing values.
 </Note>
 
+**Advanced schema patterns:**
+
+Use `enum` to constrain values to a fixed set — this reduces hallucination on categorical fields:
+
+```python
+data_extraction_schema={
+    "type": "object",
+    "properties": {
+        "order_status": {
+            "type": "string",
+            "enum": ["pending", "processing", "shipped", "delivered", "cancelled"],
+            "description": "Current order status"
+        },
+        "payment_method": {
+            "type": "string",
+            "enum": ["credit_card", "paypal", "bank_transfer", "check"],
+            "description": "Payment method used"
+        }
+    }
+}
+```
+
+Use `description` on the schema root object (not just properties) to give the AI extraction context:
+
+```python
+data_extraction_schema={
+    "type": "object",
+    "description": "Extract from the invoice detail page. All amounts are in USD. Dates use ISO 8601 format (YYYY-MM-DD).",
+    "properties": {
+        "invoice_number": {
+            "type": "string",
+            "description": "Invoice number shown at top of document, typically starts with 'INV-'"
+        },
+        "amount_due": {
+            "type": "number",
+            "description": "Total amount due in USD, without currency symbol or commas"
+        }
+    }
+}
+```
+
+To extract a flat list (without a wrapper object), pass an array schema directly:
+
+```python
+data_extraction_schema={
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "product_name": {"type": "string"},
+            "quantity": {"type": "integer"},
+            "unit_price": {"type": "number"}
+        }
+    }
+}
+```
+
 ---
 
 ## Build your schema

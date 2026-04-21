@@ -671,6 +671,44 @@ curl -s -X POST "https://api.skyvern.com/v1/browser_sessions" \
 
 ---
 
+## Common gotchas
+
+### Tasks within a session run sequentially, not in parallel
+
+A browser session holds a single browser tab. If you fire two `run_task` calls with the same `browser_session_id` simultaneously (without `wait_for_completion=True`), the second task queues behind the first and starts when the browser is free. Do not rely on parallel execution — always wait for each task to complete before starting the next one within a session.
+
+```python
+# WRONG: both tasks fire at once — second will wait, not run in parallel
+task1 = await client.run_task(prompt="Step 1", browser_session_id=session_id)
+task2 = await client.run_task(prompt="Step 2", browser_session_id=session_id)
+
+# CORRECT: wait for each task before starting the next
+await client.run_task(prompt="Step 1", browser_session_id=session_id, wait_for_completion=True)
+await client.run_task(prompt="Step 2", browser_session_id=session_id, wait_for_completion=True)
+```
+
+### Session timeout starts at browser launch, not task start
+
+The `timeout` you set is the session's total lifetime in minutes, counted from when the browser instance launches (shortly after `create_browser_session` returns). It does not reset between tasks. If you create a 10-minute session and spend 8 minutes on the first task, you have 2 minutes left for the second task.
+
+For long-running sequences, either set a generous timeout upfront or use a Workflow (which manages the browser lifetime internally).
+
+### Session state survives task failures
+
+If a task fails inside a session (returns `failed` or `terminated`), the browser session remains `running`. The browser may be on an unexpected page (error page, redirect). Subsequent tasks start from wherever the browser ended up — not from the original URL. Add a `url` parameter to the next task to force navigation to a known page:
+
+```python
+# After a failed task, reset to a known page in the next call
+result = await client.run_task(
+    prompt="Try again from the dashboard",
+    url="https://app.example.com/dashboard",  # explicit URL resets page state
+    browser_session_id=session_id,
+    wait_for_completion=True,
+)
+```
+
+---
+
 ## Sessions vs Profiles
 
 Skyvern also offers [Browser Profiles](/optimization/browser-profiles), saved snapshots of browser state (cookies, storage, session files) that you can reuse across days or weeks. Choose based on your use case:

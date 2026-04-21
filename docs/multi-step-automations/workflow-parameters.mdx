@@ -252,6 +252,45 @@ curl -X POST "https://api.skyvern.com/v1/workflows" \
 | `file_url` | URL to a file | `"https://example.com/resume.pdf"` |
 | `credential_id` | Reference to a stored credential | `"cred_abc123"` |
 
+**Using `credential_id` parameters:**
+
+The `credential_id` type lets you pass a stored credential into a workflow at run time. This is useful when a workflow needs to use different credentials for different customers, without hardcoding credentials into the workflow definition.
+
+Define the parameter:
+```json
+{
+  "key": "login_creds",
+  "parameter_type": "workflow",
+  "workflow_parameter_type": "credential_id",
+  "description": "Credential to use for portal login"
+}
+```
+
+Pass the credential ID when running:
+```python
+run = await client.run_workflow(
+    workflow_id="wpid_...",
+    parameters={
+        "login_creds": "cred_abc123"  # ID from /v1/credentials
+    }
+)
+```
+
+Inside the workflow, use `login_creds` as a `parameter_key` on a `login` or `navigation` block. Skyvern resolves the credential ID to actual username/password/TOTP at execution time — your code never sees the raw credential values.
+
+**Using `file_url` parameters:**
+
+Pass a public URL to a file. Skyvern downloads the file at execution time and makes it available for parsing or upload blocks. The URL must be publicly accessible (no auth required). For private files, generate a pre-signed URL from your storage provider and pass that.
+
+```python
+run = await client.run_workflow(
+    workflow_id="wpid_...",
+    parameters={
+        "resume": "https://storage.example.com/resumes/john-doe.pdf?signature=abc123"
+    }
+)
+```
+
 #### `blocks`
 
 Array of blocks that execute in sequence. See [Workflow Blocks Reference](/multi-step-automations/workflow-blocks-reference) for all block types.
@@ -391,9 +430,15 @@ curl -X POST "https://api.skyvern.com/v1/workflows" \
 
 ### `persist_browser_session`
 
-If `true`, the browser session is kept alive across all blocks in the workflow. This means blocks share the same browser context including cookies, local storage, and login state.
+If `true`, Skyvern saves the browser session state (cookies, localStorage, session files) to storage at the end of the workflow run. On the next run of the same workflow, the saved state is loaded automatically, allowing subsequent runs to skip login steps if the session is still valid.
 
 Defaults to `false`.
+
+<Note>
+All workflow blocks already share one browser within a single run — you don't need `persist_browser_session` for within-run session continuity. This flag is specifically about **cross-run persistence**: saving the session at the end of one run and restoring it at the start of the next.
+
+For more control over session state across different workflows, use a [Browser Profile](/optimization/browser-profiles) instead. `persist_browser_session` is skipped when `browser_profile_id` is set on the run.
+</Note>
 
 <CodeGroup>
 ```python Python
@@ -435,6 +480,63 @@ curl -X POST "https://api.skyvern.com/v1/workflows" \
 <Info>
 Additional advanced parameters are available when creating a workflow, including `totp_verification_url`, `totp_identifier`, `model`, and `extra_http_headers`. See the [API Reference](/api-reference) for the full list.
 </Info>
+
+---
+
+### Jinja2 template syntax
+
+All string values in block definitions — `navigation_goal`, `url`, `prompt`, `body`, `subject`, etc. — are processed as Jinja2 templates before execution. This goes beyond simple `{{ variable }}` substitution.
+
+**Variable access:**
+
+```yaml
+# Simple variable
+navigation_goal: "Search for {{company_name}}"
+
+# Nested field from a prior block's JSON output
+navigation_goal: "Download invoice {{extract_invoice_output.invoice_number}}"
+
+# Array indexing
+navigation_goal: "Process the first vendor: {{vendors[0].name}}"
+```
+
+**Conditionals:**
+
+```yaml
+navigation_goal: |
+  Fill out the application form.
+  {% if include_cover_letter %}
+  Also attach the cover letter: {{cover_letter}}
+  {% endif %}
+  COMPLETE when the form is submitted.
+```
+
+**Filters (string manipulation):**
+
+```yaml
+# Convert to uppercase
+subject: "INVOICE {{invoice_id | upper}}"
+
+# Default value when a variable might be null
+navigation_goal: "Ship to {{city | default('New York')}}"
+
+# String formatting
+body: "Total: ${{amount | round(2)}}"
+```
+
+**Loops in templates** (for inline repetition in a single text field):
+
+```yaml
+body: |
+  Items ordered:
+  {% for item in order_items %}
+  - {{item.name}}: ${{item.price}}
+  {% endfor %}
+```
+
+<Warning>
+Jinja2 templates in Skyvern use a **sandboxed environment** (`SandboxedEnvironment`). Arbitrary Python expressions, method calls, and attribute access on restricted objects are blocked for security. Stick to standard Jinja2 filters and control structures.
+</Warning>
 
 ---
 
