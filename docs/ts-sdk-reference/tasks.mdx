@@ -33,7 +33,7 @@ The `runTask` method accepts a single request object with the following shape:
 |-----------|------|----------|---------|-------------|
 | `body.prompt` | `string` | Yes | — | Natural language instructions for what the AI should do. |
 | `body.url` | `string` | No | `undefined` | Starting page URL. If omitted, the AI navigates from a blank page. |
-| `body.engine` | `RunEngine` | No | `"skyvern_v2"` | AI engine. Options: `"skyvern_v2"`, `"skyvern_v1"`, `"openai_cua"`, `"anthropic_cua"`, `"ui_tars"`. |
+| `body.engine` | `RunEngine` | No | `"skyvern-2.0"` | AI engine. Options: `"skyvern-2.0"`, `"skyvern-1.0"`, `"openai-cua"`, `"anthropic-cua"`, `"ui-tars"`. |
 | `body.max_steps` | `number` | No | `undefined` | Cap the number of AI steps to limit cost. Run terminates with `timed_out` if hit. |
 | `body.data_extraction_schema` | `Record<string, unknown> \| string` | No | `undefined` | JSON schema constraining the output shape. |
 | `body.proxy_location` | `ProxyLocation` | No | `undefined` | Route the browser through a geographic proxy. |
