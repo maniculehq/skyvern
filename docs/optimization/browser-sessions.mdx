@@ -76,6 +76,7 @@ curl -X POST "https://api.skyvern.com/v1/browser_sessions" \
 | `proxy_location` | string | Geographic proxy location (Cloud only). See [Proxy & Geolocation](/going-to-production/proxy-geolocation) for available options |
 | `browser_type` | string | Browser type: `chrome` or `msedge` |
 | `extensions` | array | Extensions to install: `ad-blocker`, `captcha-solver` |
+| `browser_profile_id` | string | Pre-load a saved [browser profile](/optimization/browser-profiles) into the session. The session starts with the cookies and storage from this profile. |
 
 **Example response:**
 
