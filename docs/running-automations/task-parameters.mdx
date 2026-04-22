@@ -424,7 +424,7 @@ Browser sessions persist cookies, localStorage, and authentication state across 
 
 Identifier for TOTP codes when you push codes to Skyvern's API.
 
-Use this for two-factor authentication during task execution.
+Use this for two-factor authentication during task execution. See [Handle 2FA](/credentials/handle-2fa) for setup instructions.
 
 <CodeGroup>
 ```python Python
@@ -454,15 +454,13 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
 ```
 </CodeGroup>
 
-TOTP codes are used for two-factor authentication during automated logins.
-
 ---
 
 ## `totp_url`
 
 URL that Skyvern calls to fetch TOTP codes when needed.
 
-Use this when Skyvern should retrieve codes from your endpoint.
+Use this when Skyvern should pull codes from your endpoint rather than you pushing them. See [Handle 2FA](/credentials/handle-2fa) for setup instructions.
 
 <CodeGroup>
 ```python Python
@@ -491,8 +489,6 @@ curl -X POST "https://api.skyvern.com/v1/run/tasks" \
   }'
 ```
 </CodeGroup>
-
-TOTP codes are used for two-factor authentication during automated logins.
 
 ---
 

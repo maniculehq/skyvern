@@ -162,7 +162,7 @@ elif result.status == "completed":
 | `queued` | Waiting for an available browser. |
 | `running` | AI is executing. |
 | `completed` | Finished successfully. |
-| `failed` | Encountered an error during execution. |
-| `terminated` | Manually stopped. |
-| `timed_out` | Exceeded step limit (`max_steps`). |
+| `failed` | Encountered an error during execution, or hit the `max_steps` limit. |
+| `terminated` | AI determined the goal is unachievable (blocked login, CAPTCHA, page unavailable). |
+| `timed_out` | Exceeded the wall-clock time limit. |
 | `canceled` | Canceled before starting. |

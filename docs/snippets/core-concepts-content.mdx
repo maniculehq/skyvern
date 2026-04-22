@@ -132,7 +132,7 @@ Blocks are the building units of workflows. Each block performs one specific tas
 | **Text Prompt** | Text-only LLM prompt (no browser interaction) |
 | **Send Email** | Send email messages |
 
-For detailed block configuration, see [Workflow Blocks](/workflows/workflow-blocks-details).
+For detailed block configuration, see [Workflow Blocks](/multi-step-automations/workflow-blocks-reference).
 
 ---
 
@@ -175,7 +175,7 @@ print(result.output)   # {"heading": "Welcome"}
 | `recording_url` | Video of the execution |
 | `screenshot_urls` | Screenshots captured during execution |
 | `downloaded_files` | Files retrieved (with URLs and checksums) |
-| `failure_reason` | Error details if failed |
+| `failure_reason` | Error description if the run failed or terminated |
 | `step_count` | Number of steps taken |
 
 <Warning>
@@ -360,8 +360,8 @@ Skyvern supports multiple AI engines for task execution:
 
 | Engine | Description |
 |--------|-------------|
-| `skyvern-2.0` | Latest Skyvern model (default, recommended) |
-| `skyvern-1.0` | Previous Skyvern model |
+| `skyvern-1.0` | **Default.** Single objective, precise, faster, cheaper. Best for simple tasks like form filling or single-page extraction. |
+| `skyvern-2.0` | Multi-objective, flexible, handles complex multi-step tasks. 85.85% on WebVoyager benchmark. Slower and more expensive. |
 | `openai-cua` | OpenAI Computer Use Agent |
 | `anthropic-cua` | Anthropic Computer Use Agent |
 | `ui-tars` | UI-TARS model |

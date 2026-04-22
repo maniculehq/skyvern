@@ -27,9 +27,9 @@ Every run transitions through these states:
 | `queued` | Waiting for an available browser |
 | `running` | AI is navigating and executing |
 | `completed` | Success—check `output` for results |
-| `failed` | System error (browser crash, network failure, exception) |
+| `failed` | System error (browser crash, network failure, exception) or `max_steps` limit hit |
 | `terminated` | AI determined the goal is unachievable (login blocked, page unavailable) |
-| `timed_out` | Exceeded `max_steps` or time limit |
+| `timed_out` | Exceeded the wall-clock time limit |
 | `canceled` | Manually stopped |
 
 **Terminal states:** `completed`, `failed`, `terminated`, `timed_out`, `canceled`
@@ -195,7 +195,7 @@ done
 ```
 </CodeGroup>
 
-**`failed` vs `terminated`:** A `failed` run hit infrastructure problems—retry might work. A `terminated` run means the AI recognized the goal is unachievable with current conditions. Retrying without changes (new credentials, different URL) will produce the same result.
+**`failed` vs `terminated`:** A `failed` run hit infrastructure problems or exceeded `max_steps`—retrying may work if the cause was transient, or increase `max_steps` if the task needs more steps. A `terminated` run means the AI recognized the goal is unachievable with current conditions. Retrying without changes (new credentials, different URL) will produce the same result.
 
 ---
 

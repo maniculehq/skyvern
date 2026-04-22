@@ -19,7 +19,7 @@ Use `max_steps` to limit steps per run and prevent runaway costs.
 
 ## Limit steps with max_steps
 
-Set `max_steps` to cap the worst-case cost of any run. If a task gets stuck in a loop or hits repeated failures, `max_steps` stops it before it burns through your budget. The run terminates with `status: "timed_out"` when it hits the limit.
+Set `max_steps` to cap the worst-case cost of any run. If a task gets stuck in a loop or hits repeated failures, `max_steps` stops it before it burns through your budget. The run terminates with `status: "failed"` when it hits the limit.
 
 ### For tasks
 

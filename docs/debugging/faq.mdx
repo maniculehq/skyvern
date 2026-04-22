@@ -15,8 +15,8 @@ Check these in order:
 
 Common causes:
 - **`terminated`** — The AI couldn't complete the goal (CAPTCHA, login blocked, element not found)
-- **`timed_out`** — Exceeded `max_steps`. Increase it or simplify the task
-- **`failed`** — System error (browser crash, network failure)
+- **`failed`** — System error (browser crash, network failure) or hit the `max_steps` limit
+- **`timed_out`** — Exceeded the wall-clock time limit
 
 See the [Troubleshooting Guide](/debugging/troubleshooting-guide) for detailed steps.
 </Accordion>
@@ -31,8 +31,8 @@ Multiple similar elements on the page can confuse the AI. Fix this by:
 Check the `llm_response_parsed` artifact to see what action the AI decided to take.
 </Accordion>
 
-<Accordion title="Why is my task timing out?">
-Tasks time out when they exceed `max_steps` (default: 50). This happens when:
+<Accordion title="Why did my task fail with status: failed?">
+Tasks fail when they hit an error or exceed `max_steps`. Hitting `max_steps` sets status to `failed` (not `timed_out`). This happens when:
 
 - The task is too complex for the step limit
 - The AI gets stuck in a navigation loop

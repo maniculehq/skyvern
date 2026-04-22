@@ -78,9 +78,9 @@ curl -X GET "https://api.skyvern.com/v1/runs/$RUN_ID" \
 | Status | What it means | Likely cause |
 |--------|---------------|--------------|
 | `completed` | Run finished, but output may be wrong | Prompt interpretation issue |
-| `failed` | System error | Browser crash, network failure |
+| `failed` | System error or `max_steps` limit hit | Browser crash, network failure, or too many steps |
 | `terminated` | AI gave up | Login blocked, CAPTCHA, page unavailable |
-| `timed_out` | Exceeded `max_steps` | Task too complex, or AI got stuck |
+| `timed_out` | Exceeded wall-clock time limit | Task ran too long; check for infinite loops |
 | `canceled` | Manually stopped | — |
 
 ---
@@ -183,12 +183,14 @@ See [Using Artifacts](/debugging/using-artifacts) for the full list of artifact 
 <Accordion title="Run timed out">
 **Symptom:** Status is `timed_out`.
 
-**Check:** `recording` (stuck in a loop?) and `step_count` (how many steps?)
+This indicates the task exceeded the wall-clock time limit (not the `max_steps` limit — that results in `failed`).
+
+**Check:** `recording` (stuck in a loop?) and `step_count` (how many steps taken?)
 
 **Fix:**
-- Increase `max_steps` if the task genuinely needs more steps
 - Add explicit completion criteria: "COMPLETE when you see 'Order confirmed'"
-- Break complex tasks into multiple workflow blocks
+- Break complex tasks into multiple workflow blocks so each completes sooner
+- If the task genuinely needs more steps before the clock runs out, set `max_steps` to a lower value so you get a `failed` result earlier with diagnostic information
 </Accordion>
 
 <Accordion title="Run stuck in queued state">
