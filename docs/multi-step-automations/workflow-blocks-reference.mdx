@@ -37,6 +37,7 @@ Blocks are defined in the `workflow_definition.blocks` array. Use JSON when pass
 | [`print_page`](#print-page) | Save current page as PDF |
 | [`wait`](#wait) | Pause execution for a duration |
 | [`human_interaction`](#human-interaction) | Pause for human approval via email |
+| [`workflow_trigger`](#workflow-trigger) | Call another workflow from within this workflow |
 
 ---
 
@@ -585,6 +586,7 @@ Iterate over an array and execute nested blocks for each item.
 | `loop_over_parameter_key` | string | `""` | Parameter containing the array to iterate. |
 | `loop_variable_reference` | string | — | Custom name for the loop variable. |
 | `complete_if_empty` | boolean | `false` | If `true`, completes successfully when array is empty. |
+| `max_concurrency` | integer | `null` | Run iterations in parallel. `null` or `1` = sequential (default). `2–20` = number of iterations running concurrently. Values outside this range are clamped to `[1, 20]`. Automatically falls back to sequential when the workflow run uses a `browser_session_id`. |
 
 <Info>
 **Accessing the current item inside a loop**
@@ -594,7 +596,36 @@ Use `{{nested_block_label.current_value}}` to reference the current iteration va
 In the example above, the loop label is `apply_to_jobs` and the nested block label is `submit_application`, so the current URL is accessed as `{{submit_application.current_value}}`.
 </Info>
 
-The output of a `for_loop` block is an array containing the result from each iteration.
+### Parallel execution
+
+Set `max_concurrency` to run multiple iterations simultaneously instead of one at a time. This is useful when each iteration is independent (different URLs, different list items) and you want to reduce total workflow runtime.
+
+```json
+{
+  "block_type": "for_loop",
+  "label": "apply_to_jobs",
+  "loop_over_parameter_key": "job_urls",
+  "max_concurrency": 5,
+  "loop_blocks": [
+    {
+      "block_type": "navigation",
+      "label": "submit_application",
+      "url": "{{submit_application.current_value}}",
+      "navigation_goal": "Fill out and submit the job application form. COMPLETE when submitted."
+    }
+  ]
+}
+```
+
+Each parallel iteration gets its own browser instance. Iterations run in batches: with `max_concurrency: 5` and 20 items, Skyvern runs the first 5, waits for all 5 to finish, then runs the next 5.
+
+**Constraints:**
+
+- Parallel execution is not available when the workflow run uses a `browser_session_id`. This is because multiple iterations cannot safely share a single live browser — Skyvern detects this and falls back to sequential automatically.
+- Your organization has a concurrency quota. If the requested `max_concurrency` exceeds available quota, Skyvern reduces it or falls back to sequential rather than failing.
+- `max_concurrency` is clamped to a maximum of `20`.
+
+The output of a `for_loop` block is an array containing the result from each iteration, in the same order as the input array regardless of which iteration finished first.
 
 ---
 
@@ -1157,6 +1188,51 @@ Pause the workflow and send an email requesting human approval before continuing
 | `instructions` | string | `"Please review and approve or reject to continue the workflow."` | Instructions shown in the approval interface. |
 | `positive_descriptor` | string | `"Approve"` | Label for the approval button. |
 | `negative_descriptor` | string | `"Reject"` | Label for the rejection button. |
+
+---
+
+## Workflow Trigger
+
+Call another workflow from within the current workflow. Use this to compose large automations from smaller, reusable workflows.
+
+<CodeGroup>
+```json JSON
+{
+  "block_type": "workflow_trigger",
+  "label": "run_invoice_extractor",
+  "workflow_permanent_id": "wpid_invoice_extractor_abc123",
+  "payload": {
+    "vendor_url": "{{vendor_url}}",
+    "date_range": "{{date_range}}"
+  },
+  "wait_for_completion": true
+}
+```
+
+```yaml YAML
+- block_type: workflow_trigger
+  label: run_invoice_extractor
+  workflow_permanent_id: wpid_invoice_extractor_abc123
+  payload:
+    vendor_url: "{{vendor_url}}"
+    date_range: "{{date_range}}"
+  wait_for_completion: true
+```
+</CodeGroup>
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `workflow_permanent_id` | string | — | **Required.** The permanent ID (`wpid_...`) of the workflow to trigger. |
+| `payload` | object | `null` | Parameters to pass to the triggered workflow. Values support Jinja2 templating. |
+| `wait_for_completion` | boolean | `true` | If `true`, the parent workflow waits for the triggered workflow to finish before continuing. If `false`, the trigger fires and the parent moves on immediately (fire-and-forget). |
+| `browser_session_id` | string | — | Browser session ID for the triggered workflow. |
+| `use_parent_browser_session` | boolean | `false` | If `true`, the triggered workflow inherits the parent workflow's browser session. Cannot be combined with `browser_session_id`. |
+
+The output of a `workflow_trigger` block is the output of the triggered workflow. Reference it in later blocks as `{{run_invoice_extractor_output}}`.
+
+<Warning>
+**Circular trigger chains are blocked.** If workflow A triggers B which triggers A again, Skyvern detects the cycle and fails the block. The maximum trigger nesting depth is 10 levels.
+</Warning>
 
 ---
 
