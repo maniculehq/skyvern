@@ -13,7 +13,7 @@ keywords:
   - budget
 ---
 
-Skyvern Cloud uses a **credit-based billing model**. Each plan includes a monthly credit allowance that determines how many actions you can run.
+Skyvern Cloud uses a **credit-based billing model**. Each step — one AI decision and action cycle — draws from your monthly credit allowance. The strategies on this page reduce consumption directly: capping steps with `max_steps` to prevent runaway costs, eliminating AI inference on repeated tasks through code generation, and choosing a lighter engine when a task doesn't need maximum capability.
 
 | Plan | Price | Actions Included |
 |------|-------|------------------|
@@ -21,8 +21,6 @@ Skyvern Cloud uses a **credit-based billing model**. Each plan includes a monthl
 | Hobby | $29 | ~1,200 |
 | Pro | $149 | ~6,200 |
 | Enterprise | Custom | Unlimited |
-
-Use `max_steps` to limit steps per run and prevent runaway costs.
 
 ---
 
