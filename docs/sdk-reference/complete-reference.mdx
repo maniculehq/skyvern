@@ -287,14 +287,14 @@ const result = await page.agent.runWorkflow("wpid_abc123", {
 result = await client.run_task(
     prompt: str,                                # Required
     url: str | None = None,
-    engine: RunEngine = RunEngine.skyvern_v2,
+    engine: RunEngine = RunEngine.skyvern_v1,
     wait_for_completion: bool = False,
     timeout: float = 1800,
     max_steps: int | None = None,
     data_extraction_schema: dict | str | None = None,
     browser_session_id: str | None = None,
     publish_workflow: bool = False,
-    proxy_location: ProxyLocation | None = None,
+    proxy_location: ProxyLocation = ProxyLocation.RESIDENTIAL,
     webhook_url: str | None = None,
     error_code_mapping: dict[str, str] | None = None,
     totp_identifier: str | None = None,
@@ -315,7 +315,7 @@ const result = await skyvern.runTask({
   body: {
     prompt: string,                              // Required
     url?: string,
-    engine?: RunEngine,                          // "skyvern_v2" default
+    engine?: RunEngine,                          // "skyvern_v1" default
     max_steps?: number,
     data_extraction_schema?: Record<string, unknown> | string,
     browser_session_id?: string,
@@ -399,7 +399,7 @@ result = await client.run_workflow(
     ai_fallback: bool | None = None,
     browser_session_id: str | None = None,
     browser_profile_id: str | None = None,
-    proxy_location: ProxyLocation | None = None,
+    proxy_location: ProxyLocation = ProxyLocation.RESIDENTIAL,
     max_steps_override: int | None = None,
     webhook_url: str | None = None,
     title: str | None = None,

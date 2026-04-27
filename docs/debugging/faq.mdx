@@ -165,11 +165,11 @@ Set `proxy_location` when running a task:
 result = await client.run_task(
     prompt="...",
     url="https://example.com",
-    proxy_location="RESIDENTIAL_US"  # or RESIDENTIAL_ISP for static IPs
+    proxy_location="RESIDENTIAL"  # or RESIDENTIAL_ISP for static IPs
 )
 ```
 
-Available locations include `RESIDENTIAL_US`, `RESIDENTIAL_UK`, `RESIDENTIAL_ISP`, and more. Use `RESIDENTIAL_ISP` for sites that require consistent IP addresses.
+Available locations include `RESIDENTIAL` (United States), `RESIDENTIAL_GB` (United Kingdom), `RESIDENTIAL_ISP`, and more. Use `RESIDENTIAL_ISP` for sites that require consistent IP addresses.
 </Accordion>
 
 <Accordion title="Can I increase the max steps limit beyond 75?">

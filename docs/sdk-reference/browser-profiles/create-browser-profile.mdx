@@ -19,7 +19,7 @@ profile = await client.create_browser_profile(
     name="production-login",
     workflow_run_id="wr_abc123",
 )
-print(profile.browser_profile_id)  # bpf_abc123
+print(profile.browser_profile_id)  # bp_abc123
 ```
 
 ```typescript TypeScript
@@ -27,7 +27,7 @@ const profile = await skyvern.createBrowserProfile({
   name: "production-login",
   workflow_run_id: "wr_abc123",
 });
-console.log(profile.browser_profile_id); // bpf_abc123
+console.log(profile.browser_profile_id); // bp_abc123
 ```
 </CodeGroup>
 
@@ -47,7 +47,7 @@ You must provide either `workflow_run_id` or `browser_session_id`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `browser_profile_id` | `str` | Unique ID. Starts with `bpf_`. |
+| `browser_profile_id` | `str` | Unique ID. Starts with `bp_`. |
 | `name` | `str` | Profile name. |
 | `description` | `str \| None` | Profile description. |
 | `created_at` | `datetime` | When the profile was created. |

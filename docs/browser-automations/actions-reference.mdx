@@ -269,7 +269,7 @@ await page.fill("#email", "user@example.com", { prompt: "Fill email" })      // 
 | `totp_identifier` | `str` | No | TOTP identifier for 2FA fields |
 | `totp_url` | `str` | No | TOTP URL |
 
-**Returns:** `str` (resolved selector)
+**Returns:** `str` (value filled into the field)
 
 **SDK reference:** [fill](/sdk-reference/browser-automation/fill)
 
@@ -300,7 +300,7 @@ await page.selectOption("#country", { value: "us", prompt: "Select United States
 | `prompt` | `str` | No | AI prompt (fallback or primary) |
 | `ai` | `str` | No | AI mode: `"fallback"` (default) or `None` |
 
-**Returns:** `str | None` (resolved selector)
+**Returns:** `str | None` (value successfully selected, or `None` if nothing was selected)
 
 **SDK reference:** [select_option](/sdk-reference/browser-automation/select-option)
 
@@ -336,7 +336,7 @@ await page.type("#otp", totp_url="otpauth://totp/Example:alice?secret=JBSWY3DPEH
 | `totp_identifier` | `str` | No | Identifier for a stored TOTP secret |
 | `totp_url` | `str` | No | `otpauth://` URI to generate a one-time password on the fly |
 
-**Returns:** `str` (resolved selector)
+**Returns:** `str` (value typed into the field)
 
 **SDK reference:** [type](/sdk-reference/browser-automation/type)
 
@@ -420,7 +420,7 @@ await page.upload_file(
 | `prompt` | `str` | No | Natural-language description of the file input to target |
 | `ai` | `str` | No | AI mode: `"fallback"` (default) tries the selector first, then AI |
 
-**Returns:** `str` (resolved selector)
+**Returns:** `str` (file path or URL that was uploaded)
 
 **SDK reference:** [upload_file](/sdk-reference/browser-automation/upload-file)
 
@@ -793,7 +793,7 @@ await page.fill_autocomplete(prompt="Fill 'San Francisco' in the city autocomple
 | `wait_seconds` | `float` | No | Seconds to wait for the dropdown to appear. Default `1.5` |
 | `**kwargs` |  | No | Standard Playwright fill options (e.g., `timeout`, `force`) |
 
-**Returns:** `str` (resolved selector)
+**Returns:** `str` (value selected from the dropdown, or the typed value if no dropdown appeared)
 
 **SDK reference:** [fill_autocomplete](/sdk-reference/browser-automation/fill-autocomplete)
 

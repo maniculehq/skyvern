@@ -28,4 +28,4 @@ await page.type("#otp", totp_identifier="my-app", totp_url="otpauth://totp/...")
 | `totp_identifier` | `str` | No | Identifier for a stored TOTP secret. |
 | `totp_url` | `str` | No | `otpauth://` URI to generate a one-time password on the fly. |
 
-Returns `str` - the resolved selector used.
+Returns `str` - the value that was typed into the field.

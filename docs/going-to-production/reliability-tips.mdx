@@ -340,7 +340,7 @@ When a run fails:
 | **Autocomplete cycling** | AI second-guessing dropdown selections | Add "select and move on; don't modify" to prompt |
 | **Task navigates too far** | Task block continues until goal complete | Use Action/Navigation block for single-step actions |
 | **Session expired** | Human-in-the-loop timeout | Increase timeout or split into multiple workflows |
-| **Max steps reached** | Complex page or AI retrying actions | Increase `max_steps_per_run` or simplify the goal |
+| **Max steps reached** | Complex page or AI retrying actions | Increase `max_steps` (per-request) or `MAX_STEPS_PER_RUN` (global config) or simplify the goal |
 
 ### When to adjust prompts vs file a bug
 

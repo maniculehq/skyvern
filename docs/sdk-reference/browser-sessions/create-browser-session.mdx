@@ -33,7 +33,7 @@ console.log(session.browser_session_id); // pbs_abc123
 | `proxy_location` | `ProxyLocation` | No | `None` | Route browser traffic through a geographic proxy. |
 | `extensions` | `list[Extensions]` | No | `None` | Browser extensions to install. Options: `"ad-blocker"`, `"captcha-solver"`. |
 | `browser_type` | `PersistentBrowserType` | No | `None` | Browser type. Options: `"chrome"`, `"msedge"`. |
-| `browser_profile_id` | `str` | No | `None` | Load a browser profile (cookies, localStorage) into this session. ID starts with `bpf_`. |
+| `browser_profile_id` | `str` | No | `None` | Load a browser profile (cookies, localStorage) into this session. ID starts with `bp_`. |
 | `request_options` | `RequestOptions` | No | | Per-request configuration (see below). |
 
 ### Returns `BrowserSessionResponse`

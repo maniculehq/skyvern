@@ -45,7 +45,7 @@ console.log(result.output);
 | `ai_fallback` | `bool` | No | `None` | Fall back to AI if the cached code fails. |
 | `browser_session_id` | `str` | No | `None` | Run inside an existing [browser session](/optimization/browser-sessions). |
 | `browser_profile_id` | `str` | No | `None` | Load a [browser profile](/optimization/browser-profiles) (cookies, storage) into the session. |
-| `proxy_location` | `ProxyLocation` | No | `None` | Route the browser through a geographic proxy. |
+| `proxy_location` | `ProxyLocation` | No | `RESIDENTIAL` | Route the browser through a geographic proxy. Default is a US residential IP. |
 | `max_steps_override` | `int` | No | `None` | Cap total AI steps across all blocks. |
 | `webhook_url` | `str` | No | `None` | URL to receive a POST when the run finishes. |
 | `title` | `str` | No | `None` | Display name for this run in the dashboard. |
@@ -121,7 +121,7 @@ result = await client.run_workflow(
 ```python Python
 result = await client.run_workflow(
     workflow_id="wpid_daily_report",
-    browser_profile_id="bpf_abc123",
+    browser_profile_id="bp_abc123",
     wait_for_completion=True,
 )
 ```
@@ -130,7 +130,7 @@ result = await client.run_workflow(
 const result = await skyvern.runWorkflow({
   body: {
     workflow_id: "wpid_daily_report",
-    browser_profile_id: "bpf_abc123",
+    browser_profile_id: "bp_abc123",
   },
   waitForCompletion: true,
 });

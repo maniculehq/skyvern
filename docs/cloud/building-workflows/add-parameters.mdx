@@ -132,10 +132,13 @@ These variable names are built-in and cannot be used as parameter keys:
 | `current_value` | Loop blocks | The current item being iterated |
 | `current_item` | Loop blocks | Alias for `current_value` |
 | `current_index` | Loop blocks | Zero-based index of the current iteration |
+| `current_date` | All blocks | Today's date in ISO 8601 format |
 | `workflow_run_id` | All blocks | Unique ID of the current run |
 | `workflow_id` | All blocks | The workflow's ID |
 | `workflow_permanent_id` | All blocks | The workflow's permanent ID |
 | `workflow_title` | All blocks | The workflow's title |
+| `workflow_run_outputs` | All blocks | Collected outputs from all blocks in the current run |
+| `workflow_run_summary` | All blocks | Summary of the current workflow run |
 
 **Example in a loop:**
 ```

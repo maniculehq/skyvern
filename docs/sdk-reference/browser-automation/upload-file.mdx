@@ -27,4 +27,6 @@ await page.upload_file("#file-input", files="/path/to/file.pdf",
 | `prompt` | `str` | No | Natural-language description of the file input to target. |
 | `ai` | `str` | No | Controls AI behavior. Default `"fallback"` tries the selector first, then AI. |
 
-Returns `str` - the resolved selector used.
+## Returns `str`
+
+The file path or URL that was uploaded.

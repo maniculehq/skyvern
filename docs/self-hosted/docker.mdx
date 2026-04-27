@@ -146,7 +146,7 @@ flowchart LR
 | Service | Image | Ports | Purpose |
 |---------|-------|-------|---------|
 | `postgres` | postgres:14-alpine | 5432 (internal) | Stores tasks, workflows, credentials, and run history |
-| `skyvern` | public.ecr.aws/skyvern/skyvern | 8000, 9222 | API server + embedded browser |
+| `skyvern` | public.ecr.aws/skyvern/skyvern | 8000, 6080, 9222 | API server + embedded browser (6080: VNC WebSocket streaming; 9222: CDP browser forwarding) |
 | `skyvern-ui` | public.ecr.aws/skyvern/skyvern-ui | 8080, 9090 | Web dashboard and artifact server |
 
 The `skyvern` container includes Playwright with Chromium. The browser runs inside the same container as the API server. No separate browser service is needed.
