@@ -100,7 +100,7 @@ HOSTED_PROXY_POOL=http://username:password@proxy.provider.com:8080
 Run a simple task that checks your IP:
 
 ```bash
-curl -s http://localhost:8000/v1/tasks \
+curl -s -X POST http://localhost:8000/v1/run/tasks \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

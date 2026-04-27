@@ -305,11 +305,10 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
   // Use timing-safe comparison to prevent timing attacks
   let valid = false;
   try {
-    crypto.timingSafeEqual(
+    valid = crypto.timingSafeEqual(
       Buffer.from(signature || ''),
       Buffer.from(expected)
     );
-    valid = true;
   } catch (err) {
     valid = false;
   }
