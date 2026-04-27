@@ -1,5 +1,5 @@
 ---
-title: What is Skyvern?
+title: "What is Skyvern?"
 subtitle: AI-powered browser automation for any website
 description: Skyvern automates browser-based workflows using LLMs and computer vision. It navigates websites it has never seen before, filling forms, extracting data, and completing multi-step tasks via a simple API.
 slug: getting-started/introduction
@@ -15,6 +15,76 @@ keywords:
   - Playwright
 ---
 
-import IntroductionContent from "/snippets/introduction-content.mdx";
+Skyvern is an AI-powered browser automation platform. Instead of fragile CSS selectors, it uses a large language model and computer vision to look at a page, decide what to do, and take action — the same way a human would. You describe the goal in plain English and Skyvern figures out the clicks, form fills, and navigations needed to complete it.
 
-<IntroductionContent />
+It was built for a simple reason: the web changes constantly, and automation built on selectors breaks constantly. Skyvern's model-driven approach works on sites it has never seen before and survives redesigns that would shatter traditional scripts.
+
+## How it's different from Playwright and Selenium
+
+Playwright and Selenium are selector-driven tools. They work by targeting specific DOM elements — a button with id `#login-button`, an input with class `.email-field`. That's fast and deterministic when sites are stable, but the moment a developer renames a class or restructures a form, the script breaks and someone has to fix it.
+
+Skyvern takes a different approach. Before every action, it takes a screenshot of the current page, sends it to an LLM along with a structured DOM snapshot, and asks "what should I do next to accomplish this goal?" The model looks at the page the same way a person would — by what things look like and what they say — and returns an action. Playwright then executes that action.
+
+The practical difference:
+
+```python
+# Playwright — breaks if the id changes
+await page.click('#login-button')
+
+# Skyvern — works as long as there's something that looks like a login button
+await page.act("Click the login button")
+```
+
+Because Skyvern reasons about the visual and semantic content of a page rather than its underlying structure, it handles sites it has never encountered before and keeps working through redesigns. There are no selectors to maintain.
+
+## Who uses Skyvern
+
+Skyvern is used by developers and teams who need automation that doesn't require constant babysitting:
+
+- **Data extraction pipelines** — scraping competitor pricing, job listings, regulatory filings, or public records from sites that block scrapers or rotate their layouts.
+- **Form-filling workflows** — submitting insurance claims, healthcare intake forms, financial applications, or vendor onboarding portals at scale.
+- **Healthcare and financial data collection** — navigating provider portals and broker platforms to pull structured data on a schedule.
+- **AI agent integrations** — giving Claude, GPT-4, Cursor, or any MCP-capable assistant a real browser to work with, so the agent can look things up, fill out forms, and take action on the web.
+- **Teams who've been burned by selector maintenance** — anyone who has spent hours chasing broken XPaths after a site redesign.
+
+## The agent loop
+
+Every Skyvern automation runs the same perception-action loop. One pass through the loop is called a **step**:
+
+1. **Screenshot** — capture the current state of the browser.
+2. **Extract DOM** — pull a structured representation of interactive elements.
+3. **LLM decides** — the model sees the screenshot and DOM, reviews the goal, and picks the next action (click, type, scroll, extract, etc.).
+4. **Playwright executes** — the chosen action is performed in the real browser.
+5. **Goal check** — did the goal get met? If yes, done. If no, loop back to step 1.
+
+<img src="/images/skyvern-agent-loop.png" alt="Skyvern agent loop: Screenshot → Extract DOM → LLM reasons → Execute action → Goal check → Repeat" />
+
+Most tasks take 2–10 steps. A step that navigates to a page and fills a field counts as two steps.
+
+For complex, multi-stage tasks, Skyvern uses a **Planner-Agent-Validator** architecture:
+
+- **Planner** — breaks the high-level goal into an ordered sequence of sub-tasks.
+- **Task Agent** — executes each sub-task through the perception-action loop described above.
+- **Validator** — checks whether the sub-task actually succeeded, and feeds the result back to the Planner to decide whether to proceed, retry, or abort.
+
+This three-layer system handles goals like "log in, find the latest invoice, download it, and confirm the download succeeded" without you having to orchestrate the sub-steps manually.
+
+## What Skyvern handles
+
+**Authentication and credentials** — Skyvern stores credentials in an encrypted vault (or syncs from Bitwarden, 1Password, or Azure Key Vault). Credentials are injected directly into browser fields. The LLM never sees them.
+
+**CAPTCHAs** — automatically solved. Skyvern handles the most common challenge types without interrupting the automation.
+
+**Structured data extraction** — pass a JSON Schema and Skyvern returns structured output that matches it. Useful for pulling tables, pricing, form fields, or any data that would otherwise require post-processing.
+
+**Files** — download files and get back URLs; upload files by path or URL; parse PDFs, CSVs, and Excel files into structured data as part of a workflow.
+
+**Proxy and geolocation** — route traffic through residential proxies in 21 countries to bypass geo-restrictions and bot detection, or to test region-specific content.
+
+**Browser state** — Browser Sessions keep a live browser open across multiple operations (up to 24 hours). Browser Profiles save authenticated state as a snapshot so future runs can skip the login entirely.
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/getting-started/quickstart">
+  Run your first automation in under five minutes with the Python SDK or REST API.
+</Card>
