@@ -19,12 +19,12 @@ Whether you launch a task, run a workflow, or kick off a Skyvern 2.0 observer, w
 
 A run is one execution of one thing: a task, a workflow, or an observer cruise. Every run gets its own row in `task_runs` (`TaskRunModel`, `skyvern/forge/sdk/db/models.py:1000-1064`), regardless of which engine produced it. That row carries the fields that are common to all of them:
 
-- `run_id` — the public identifier you'll see everywhere.
-- `task_run_type` — which engine produced this run (task, workflow, or observer).
-- `status` — open-ended because each engine has its own status set; the universal terminal values are `completed`, `failed`, `terminated`, `canceled`, `timed_out`.
-- `started_at`, `finished_at`, `duration_ms` — wall-clock window of the run.
-- `compute_cost`, `instance_type`, `vcpu_millicores`, `memory_mb` — what the run billed.
-- `parent_workflow_run_id` — set when this run is a sub-task of a workflow, so the UI can stitch nested runs together.
+- `run_id`: the public identifier you'll see everywhere.
+- `task_run_type`: which engine produced this run (task, workflow, or observer).
+- `status`: open-ended because each engine has its own status set; the universal terminal values are `completed`, `failed`, `terminated`, `canceled`, `timed_out`.
+- `started_at`, `finished_at`, `duration_ms`: wall-clock window of the run.
+- `compute_cost`, `instance_type`, `vcpu_millicores`, `memory_mb`: what the run billed.
+- `parent_workflow_run_id`: set when this run is a sub-task of a workflow, so the UI can stitch nested runs together.
 
 Because `task_runs` is the shared spine, the Runs page can list everything in one paginated view, and a single endpoint, `GET /v1/runs/{run_id}`, can return whatever shape that ID actually is.
 
@@ -60,7 +60,7 @@ The relevant operations:
 | `POST` | `/v1/runs/{run_id}/cancel` | Cancel an active run. |
 | `POST` | `/v1/runs/{run_id}/retry_webhook` | Re-fire the run's webhook delivery. |
 | `GET` | `/v1/runs/{run_id}/artifacts` | List screenshots, recordings, prompts, downloads. |
-| `GET` | `/v1/runs/{run_id}/timeline` | Chronological merge of thoughts, steps, blocks (workflow + task v2 only). |
+| `GET` | `/v1/runs/{run_id}/timeline` | Newest-first merge of thoughts, steps, blocks (workflow + task v2 only). |
 | `GET` | `/v1/runs` | Paginated history with filters. |
 
 The route definitions are in `skyvern/forge/sdk/routes/agent_protocol.py:461-2307`.
@@ -78,7 +78,8 @@ client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
 run = await client.get_run(run_id="wfr_abc123")
 print(run.status, run.task_run_type)
 
-if not run.status.endswith(("completed", "failed", "terminated", "canceled", "timed_out")):
+terminal_statuses = {"completed", "failed", "terminated", "canceled", "timed_out"}
+if run.status not in terminal_statuses:
     raise SystemExit("Run still in progress")
 
 artifacts = await client.get_run_artifacts(run_id=run.run_id)
@@ -86,7 +87,7 @@ for a in artifacts:
     print(a.artifact_type, a.uri)
 ```
 
-`get_run` works for every run type. `get_run_artifacts` works for every run type. `get_run_timeline` returns 400 for v1 tasks (no planning layer) and the CUA engines, but works for workflow runs and v2 runs (`agent_protocol.py:1771-1814`).
+`get_run` works for every run type. `get_run_artifacts` works for every run type. `get_run_timeline` returns 400 for v1 tasks (no planning layer) and the CUA engines, but works for workflow runs and v2 runs (`agent_protocol.py:1771-1814`). The timeline list is sorted newest-first in source; reverse it in your client if you want oldest-to-newest playback.
 
 ## When parent and child runs both exist
 
@@ -102,7 +103,7 @@ You don't typically need to touch the child run directly. The parent ID is the o
 
 When a run reaches a final status, Skyvern POSTs the run payload to the `webhook_callback_url` you set on the request. Two things matter for receivers:
 
-**Signature.** Each delivery carries `x-skyvern-timestamp` (Unix seconds) and `x-skyvern-signature` (HMAC-SHA256 of the normalized JSON body, keyed with your API key). Verify both before trusting the payload. The signing function is at `skyvern/forge/sdk/core/security.py:75-95`.
+**Signature.** Each delivery carries `x-skyvern-timestamp` (Unix seconds) and `x-skyvern-signature` (HMAC-SHA256 of the exact JSON string Skyvern sends, keyed with your API key). Treat the timestamp as a freshness signal, but the current signing helper signs the body only. The signing function is at `skyvern/forge/sdk/core/security.py:75-95`. Verify the raw request body before parsing or re-serializing it.
 
 ```python
 import hmac, hashlib
@@ -112,7 +113,7 @@ def verify(api_key: str, body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 ```
 
-**No automatic retries.** Skyvern delivers each webhook once. A 5xx response or a timeout does *not* trigger an automatic retry. If the receiver was down, call `POST /v1/runs/{run_id}/retry_webhook` to re-fire it (replay paths through `skyvern/services/webhook_service.py:482-507` are also one-shot, they just give you a new attempt). Timeouts vary by path: 60 seconds for the main run-completion delivery, 30 seconds for v2 status updates. Either way, retries are your job.
+**No automatic retries.** Skyvern delivers each webhook once. A 5xx response or a timeout does *not* trigger an automatic retry. If the receiver was down, call `POST /v1/runs/{run_id}/retry_webhook` to re-fire it (replay paths through `skyvern/services/webhook_service.py:482-507` are also one-shot, they just give you a new attempt). Normal task, workflow, and Task v2 deliveries use a 30 second timeout; the retry/replay endpoint uses 60 seconds. Either way, retries are your job.
 
 The implication: receivers must be idempotent. If you respond `200` and then your handler crashes, the run is already marked delivered. Persist the work *before* you return success.
 

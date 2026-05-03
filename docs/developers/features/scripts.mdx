@@ -13,11 +13,11 @@ keywords:
   - deterministic replay
 ---
 
-When a workflow runs successfully on a real site, Skyvern can capture what the agent did and emit it as a Playwright script you can replay deterministically. Subsequent runs that match the same shape skip the LLM and execute the script directly. This is how Skyvern makes repeatable workflows fast and cheap. By the end of this page, you'll know how scripts are produced, how cache keys decide when to use one, and how to pin, edit, or invalidate them.
+When a workflow runs successfully on a real site, Skyvern can capture what the agent did and emit it as a Playwright script you can replay deterministically. Subsequent code-mode runs that match the same shape skip the LLM and execute the script directly, reducing inference cost on repeated workflows. By the end of this page, you'll know how scripts are produced, how cache keys decide when to use one, and how to pin, edit, or invalidate them.
 
 ## Why generated scripts exist
 
-The agent is great when the page is unfamiliar and bad when it has to redo the same path a hundred times. A generated script is the bridge: the first run pays the LLM cost to learn the path, every later run pays roughly nothing. The LLM only re-enters the loop when the page actually changes.
+The agent is useful when the page is unfamiliar and wasteful when it has to redo the same path a hundred times. A generated script is the bridge: the first eligible run pays the LLM cost to learn the path, later code-mode runs execute the recorded code. The LLM only re-enters the loop when the page actually changes and fallback is enabled.
 
 The pieces:
 
@@ -42,16 +42,17 @@ A run produces v1, real traffic surfaces fallback episodes, the reviewer turns t
 
 ## Triggering generation
 
-Script generation is *not* a per-call SDK parameter. There are two ways to turn it on, both at the workflow level:
+Script generation is *not* controlled by a `generate_script` parameter on each SDK run call. There are two public ways to turn it on:
 
-- **Set `generate_script_on_terminal=True` on the workflow definition** (`skyvern/schemas/workflows.py:1178`). Whenever a run of that workflow finishes in `completed` or `terminated` state, Skyvern emits a script.
-- **Run a Task v2 with `publish_workflow=True`** on the task request (`skyvern/library/skyvern.py:294`). The successful v2 run is materialized as a workflow *and* recorded as that workflow's first script:
+- **Set `generate_script_on_terminal=True` on the workflow definition** (`skyvern/schemas/workflows.py:1178`). Completed workflow runs can generate scripts in the normal post-run path; this flag also makes `terminated` runs script-eligible. Failed, canceled, and timed-out runs skip generation.
+- **Run a Task v2 with `publish_workflow=True` and `run_with="code"`** on the task request (`skyvern/library/skyvern.py:294`). The successful v2 run is materialized as a workflow and becomes that workflow's first script:
 
 ```python
 result = await client.run_task(
     prompt="Find the report for last quarter and email it to me.",
     engine="skyvern-2.0",
     publish_workflow=True,
+    run_with="code",
     wait_for_completion=True,
 )
 ```
@@ -68,7 +69,7 @@ Two pieces decide whether a future run replays the script.
 
 **`cache_key_value`** is what that template renders to for a given run. Two runs with the same rendered value are treated as the same replay context.
 
-When a workflow run starts, Skyvern looks up `(workflow_permanent_id, cache_key_value)`. If a script is published for that pair, it replays. If not, the agent runs and (if the workflow has `generate_script_on_terminal=True`, or the run came from a v2 task with `publish_workflow=True`) the run becomes the script for next time.
+When a workflow run starts, Skyvern looks up `(workflow_permanent_id, cache_key_value)`. If a script is published for that pair, it replays. If not, the agent runs and (if the workflow has `generate_script_on_terminal=True`, or the run came from a v2 task with `publish_workflow=True` and `run_with="code"`) the run becomes the script for next time.
 
 This is why most workflows use the *target URL* or *account ID* as a cache key. Two runs against the same login look the same; two runs against different sites do not.
 
@@ -90,7 +91,7 @@ The implication: editing a workflow's parameters and re-running it is the suppor
 
 ## Pinning a version
 
-By default the latest published version is replayed. When you want to lock to one — say, you've audited v3 and don't trust auto-promotion — pin it via the HTTP API. The pin and unpin endpoints are not in the public OpenAPI schema (`include_in_schema=False`) and are not exposed on the Python SDK; call them directly with the `x-api-key` header:
+By default the latest published version is replayed. When you want to lock to one, say you've audited v3 and don't trust auto-promotion, pin it via the HTTP API. The pin and unpin endpoints are not in the public OpenAPI schema (`include_in_schema=False`) and are not exposed on the Python SDK; call them directly with the `x-api-key` header:
 
 ```bash
 curl -X POST \
@@ -141,9 +142,9 @@ Endpoint: `POST /v1/scripts/{workflow_permanent_id}/review` (`scripts.py:1281-14
 
 ## Clearing the cache
 
-You'll occasionally want to throw a script away and let the agent re-learn the path — usually after a redesign. Two endpoints:
+You'll occasionally want to throw a script away and let the agent re-learn the path, usually after a redesign. Two endpoints:
 
-- `DELETE /v1/scripts/{workflow_permanent_id}/value` removes a single cache-key value's script binding.
+- `DELETE /v1/scripts/{workflow_permanent_id}/value?cache-key-value=<value>` removes a single cache-key value's script binding.
 - `DELETE /v1/scripts/{workflow_permanent_id}/cache` clears all cached scripts for the workflow at once (`scripts.py:1126-1173`).
 
 Both are soft deletes against `WorkflowScriptModel` plus an in-memory cache flush. The next run that satisfies the generation rules above will produce a new version from scratch.
@@ -181,6 +182,6 @@ The `ENABLE_CODE_BLOCK` flag (`config.py:461`, default `True` self-hosted) contr
     icon="code"
     href="/cloud/building-workflows/run-from-code"
   >
-    Trigger workflow runs and pass `generate_script=True`.
+    Trigger workflow runs and pass `run_with="code"`.
   </Card>
 </CardGroup>

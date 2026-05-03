@@ -21,7 +21,7 @@ If you're looking for the conceptual overview or the Cloud UI walkthrough, see [
 
 ## Prerequisites
 
-- Python 3.11 (Skyvern only supports 3.11 today).
+- Python `>=3.11,<3.14`, matching the package metadata in `pyproject.toml`.
 - One of the supported MCP clients installed: Cursor, Claude Code, Claude Desktop, Windsurf, Codex, OpenClaw, or Hermes.
 - A Skyvern API key. Get one at [app.skyvern.com/settings](https://app.skyvern.com/settings/) for Cloud, or generate a local key with `skyvern init`.
 
@@ -31,7 +31,7 @@ pip install skyvern
 
 ## 1. Pick local or cloud
 
-`skyvern init` is the interactive wizard. It asks whether you want to run against Skyvern Cloud or a local server, writes the right env vars to `~/.skyvern/.env`, and offers to register the MCP server with the AI tools it finds installed.
+`skyvern init` is the interactive wizard. It asks whether you want to run against Skyvern Cloud or a local server, writes the right env vars to a `.env` file in your current working directory, and offers to register the MCP server with the AI tools it finds installed.
 
 ```bash
 skyvern init
@@ -49,20 +49,19 @@ You can re-run `skyvern init` later to switch the default; nothing is locked in.
 If the wizard didn't catch a tool you use (or you skipped that step), `skyvern setup` is the standalone command. It edits the right config file for each tool, backing up the previous version first.
 
 ```bash
-# One per tool — only run the ones you want.
+# One per tool, run only the ones you want.
 skyvern setup cursor
 skyvern setup claude-code
-skyvern setup claude-desktop
+skyvern setup claude
 skyvern setup windsurf
-skyvern setup codex
 skyvern setup openclaw
 skyvern setup hermes
 ```
 
-The setup commands live in `skyvern/cli/setup_commands.py`. Each one writes an `mcpServers` entry into the tool's config (`~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, etc.) pointing at `python -m skyvern run mcp` for stdio clients or `https://api.skyvern.com/mcp/` over HTTP for cloud-only clients like Claude Desktop.
+The setup commands live in `skyvern/cli/setup_commands.py`. Cursor, Claude Code, and Windsurf get JSON `mcpServers` entries for stdio. Claude Desktop uses an `npx mcp-remote` bridge for the remote profile unless you pass `--local`. OpenClaw writes its `mcp.servers` JSON5 shape, and Hermes writes YAML. Codex is not registered by `skyvern setup`; add it manually if needed, then `skyvern mcp switch` can update `~/.codex/config.toml`.
 
 <Note>
-Before overwriting an existing config, `skyvern setup` copies it to `<config>.bak-YYYYMMDD-HHMMSS-mmmmmm` next to the original (`setup_commands.py:351-365`, using `shutil.copy2` so file permissions are preserved). The original is overwritten with the new JSON — the backup is your rollback. The CLI prints `Backup saved to <path>` after a successful write so you can find it.
+Before overwriting an existing config, `skyvern setup` copies it to `<config>.bak-YYYYMMDD-HHMMSS-mmmmmm` next to the original (`setup_commands.py:351-365`, using `shutil.copy2` so file permissions are preserved). The original is overwritten in the format that tool uses (JSON for JSON clients, YAML for Hermes; OpenClaw JSON5 is normalized to JSON), and the backup is your rollback. The CLI prints `Backup saved to <path>` after a successful write so you can find it.
 
 If your existing config can't be parsed (malformed JSON, unexpected schema), `skyvern setup` aborts with `"Cannot parse <path>. Fix the JSON and re-run."` and never writes. No backup is created in that case because nothing is being overwritten.
 </Note>
@@ -93,7 +92,7 @@ skyvern mcp profile save work-local
 skyvern mcp profile list
 ```
 
-Saved profiles live under `~/.config/skyvern/mcp-profiles/<slug>.json` (or `%APPDATA%\skyvern\mcp-profiles` on Windows) with `0600` permissions. Each profile records `name`, `api_key`, and `base_url` — no other state.
+Saved profiles live under `~/.config/skyvern/mcp-profiles/<slug>.json` (or `%APPDATA%\skyvern\mcp-profiles` on Windows) with `0600` permissions. Each profile records `name`, `api_key`, and `base_url`, with no other state.
 
 To switch which profile a tool uses:
 
@@ -136,7 +135,7 @@ Replace `python` with the absolute path to the interpreter where you installed S
 }
 ```
 
-Both shapes match the entries `skyvern setup` writes for the supported clients.
+These are the two underlying transports. Client-specific files may wrap them differently.
 
 ## What the assistant can do
 

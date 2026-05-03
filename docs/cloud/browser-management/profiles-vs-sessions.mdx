@@ -25,7 +25,7 @@ flowchart LR
     Session2 -->|drives| Run2[Future runs]
 ```
 
-A session is the *thing the browser is doing right now*. A profile is the *paper trail* it leaves behind. You almost always create a profile from a session. You rarely create one from scratch.
+A session is the *thing the browser is doing right now*. A profile is the *state snapshot* it leaves behind. You almost always create a profile from a session. You rarely create one from scratch.
 
 ## What each one actually stores
 
@@ -35,13 +35,13 @@ A `PersistentBrowserSessionModel` (lines 938-980) is the running container. The 
 
 | Column | Meaning |
 |---|---|
-| `status` | `created`, `running`, `completed`, etc. — a session has a lifecycle. |
+| `status` | `created`, `running`, `completed`, etc., so a session has a lifecycle. |
 | `started_at`, `completed_at` | Wall-clock window the browser was alive. |
 | `timeout_minutes` | How long Skyvern keeps the browser warm before tearing it down. |
 | `instance_type`, `vcpu_millicores`, `memory_mb` | Compute footprint while the session is open. |
 | `compute_cost`, `duration_ms` | What the session billed. |
 
-A `BrowserProfileModel` (lines 982-998) is the snapshot. It has a `name` unique per organization and points back to the run or session it was captured from. There are no compute fields because a profile is just data sitting in storage.
+A `BrowserProfileModel` (lines 982-998) is the snapshot metadata. It has a `name` unique per organization, a description, a source browser type, and timestamps. The archived browser state lives in artifact storage. There are no compute fields because a profile is just data sitting in storage.
 
 The key behavioral difference: sessions cost money while they exist; profiles cost almost nothing while they sit on disk.
 
@@ -53,7 +53,7 @@ Reach for a session when the work happens *now* and benefits from a warm browser
 - **Human-in-the-loop work.** "Take Control" lets you click into the live stream, dismiss a popup, or finish a CAPTCHA, then hand control back to the agent.
 - **Debugging.** Watching the live VNC stream beats post-mortem screenshots when you're trying to figure out why a step misbehaves.
 
-Sessions auto-close when their timeout expires, even mid-run. Pad your timeouts.
+Sessions can become invalid when their timeout expires, including while other work expects them. Pad your timeouts.
 
 <Warning>
 Session timeout enforcement is *passive*. A session whose `started_at + timeout_minutes` is in the past is treated as invalid the next time something asks for it (the streaming endpoint at `skyvern/forge/sdk/routes/streaming/verify.py:61-77` is the typical caller), but the underlying browser is *not* forcibly killed at the moment the timeout fires. You will see the session marked as no-longer-streamable, then it tears down on the next housekeeping pass. Don't rely on `timeout_minutes` as a hard kill switch; if you need a guaranteed cap on a long run, set the *run*'s timeout, not just the session's.
@@ -67,7 +67,7 @@ Reach for a profile when the work will happen *later* and you want to skip the b
 - **Repeated automation against the same account.** Daily extraction from the same SaaS dashboard, batch invoice downloads, anything that runs on a cadence.
 - **Fan-out.** One profile can back many sessions in parallel.
 
-Profiles expire only as fast as the underlying cookies and session tokens do. Some sites stay logged in for months; banks and healthcare portals may force re-auth in hours. If the agent suddenly hits a login page mid-run, refresh the profile.
+Profiles remain usable until the underlying cookies and session tokens expire. Some sites stay logged in for months; banks and healthcare portals may force re-auth in hours. If the agent suddenly hits a login page mid-run, refresh the profile.
 
 ## The lifecycle, end to end
 
