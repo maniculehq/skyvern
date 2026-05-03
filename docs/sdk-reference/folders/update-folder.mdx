@@ -1,0 +1,81 @@
+---
+title: "update_folder"
+description: "Rename a folder or change its description."
+slug: sdk-reference/folders/update-folder
+---
+
+The update endpoint takes the same shape as [`create_folder`](./create-folder), but every field is optional. Send only the fields you want to change; omitted fields keep their existing values. Workflow assignments are not touched here, use [`update_workflow_folder`](/sdk-reference/workflows/update-workflow-folder) to move a workflow between folders.
+
+<CodeGroup>
+```python Python
+folder = await client.update_folder(
+    "fld_abc123",
+    title="Invoice automations (2026)",
+)
+```
+
+```typescript TypeScript
+const folder = await skyvern.updateFolder("fld_abc123", {
+  title: "Invoice automations (2026)",
+});
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `folder_id` | `str` | Yes | - | The folder id (`fld_...`). |
+| `title` | `str \| None` | No | `None` | New title. 1-255 characters. Send `None` to leave unchanged. |
+| `description` | `str \| None` | No | `None` | New description. Send `None` to leave unchanged. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+### Returns `Folder`
+
+The updated folder, with refreshed `modified_at` and the current `workflow_count`.
+
+### Errors
+
+- `400 Bad Request` — title supplied but is empty or longer than 255 characters.
+- `404 Not Found` — folder id does not exist or belongs to a different org.
+
+### Related
+
+- [`get_folder`](./get-folder) — read the current state.
+- [`delete_folder`](./delete-folder) — remove a folder.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

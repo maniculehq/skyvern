@@ -1,0 +1,83 @@
+---
+title: "get_folder"
+description: "Fetch a single folder by id with its workflow count."
+slug: sdk-reference/folders/get-folder
+---
+
+Use this to look up one folder when you already have the id (for example, after `create_folder`). The endpoint returns the folder metadata plus a precomputed `workflow_count`. To list the actual workflows, call [`get_workflows`](/sdk-reference/workflows/get-workflows) and filter on `folder_id` client-side.
+
+<CodeGroup>
+```python Python
+folder = await client.get_folder("fld_abc123")
+print(folder.title, "contains", folder.workflow_count, "workflows")
+```
+
+```typescript TypeScript
+const folder = await skyvern.getFolder("fld_abc123");
+console.log(folder.title, "contains", folder.workflow_count, "workflows");
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `folder_id` | `str` | Yes | The folder id (`fld_...`). |
+| `request_options` | `RequestOptions` | No | Per-request configuration (see below). |
+
+### Returns `Folder`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `folder_id` | `str` | Echo of the requested id. |
+| `organization_id` | `str` | Owning organization. |
+| `title` | `str` | Folder title. |
+| `description` | `str \| None` | Folder description. |
+| `workflow_count` | `int` | Number of workflows currently assigned. |
+| `created_at` | `datetime` | Creation timestamp. |
+| `modified_at` | `datetime` | Last update timestamp. |
+
+### Errors
+
+- `404 Not Found` — folder id does not exist or belongs to a different org.
+
+### Related
+
+- [`get_folders`](./list-folders) — list all folders.
+- [`update_workflow_folder`](/sdk-reference/workflows/update-workflow-folder) — assign a workflow to this folder.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

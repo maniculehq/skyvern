@@ -1,0 +1,119 @@
+---
+title: Verify webhook signatures
+description: Validate Skyvern's x-skyvern-signature HMAC so you can trust the webhook body and reject replays.
+slug: developers/going-to-production/webhook-signatures
+keywords:
+  - webhook
+  - signature
+  - hmac
+  - x-skyvern-signature
+---
+
+Skyvern signs every outbound webhook with HMAC-SHA256 over the JSON body, using your organization's API key as the secret. Two headers carry the proof:
+
+- `x-skyvern-signature` — the lowercase hex digest of the HMAC.
+- `x-skyvern-timestamp` — the Unix epoch in seconds at the moment Skyvern signed the payload.
+
+Your receiver should recompute the signature and reject anything that does not match. The walkthrough below shows what to compute and how to compare it correctly.
+
+For the high-level "how do I configure a webhook URL" guide, see [Webhooks](./webhooks). This page is the verification deep-dive.
+
+## What Skyvern signs
+
+The signed payload is a canonical JSON serialization of the body — `json.dumps` with `separators=(",", ":")` and `ensure_ascii=False`, with floats that are integer-valued (`1.0`) coerced to ints (`1`) before serialization. The full algorithm lives in `skyvern/forge/sdk/core/security.py`:
+
+1. Take the response body (a `dict`) and walk it, replacing any `float` whose `.is_integer()` is true with the integer equivalent.
+2. Serialize it via `json.dumps(payload, separators=(",", ":"), ensure_ascii=False)`. The compact separators matter; a verifier that uses `json.dumps(..., indent=2)` will fail.
+3. Compute `hmac.new(api_key.encode("utf-8"), payload_str.encode("utf-8"), hashlib.sha256).hexdigest()`.
+4. Send the body, the digest as `x-skyvern-signature`, and the current Unix timestamp as `x-skyvern-timestamp`.
+
+If you cannot match Skyvern's serialization exactly, the safer pattern is to sign the raw bytes of the request body that arrive on the wire — those are exactly what Skyvern signed.
+
+## Verifier in Python
+
+```python
+import hmac
+import hashlib
+import time
+
+SKYVERN_API_KEY = "sk-..."  # Same key Skyvern uses to call /v1
+TOLERANCE_SECONDS = 5 * 60   # Reject anything older than 5 minutes
+
+def verify_skyvern_webhook(raw_body: bytes, headers: dict[str, str]) -> bool:
+    signature = headers.get("x-skyvern-signature", "")
+    timestamp = headers.get("x-skyvern-timestamp", "")
+
+    # Reject obviously stale or future-dated callbacks.
+    try:
+        ts = int(timestamp)
+    except ValueError:
+        return False
+    if abs(time.time() - ts) > TOLERANCE_SECONDS:
+        return False
+
+    expected = hmac.new(
+        SKYVERN_API_KEY.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+Three things in that snippet are doing real work:
+
+- `raw_body` is the bytes the HTTP server received, not your re-serialized version. Frameworks typically expose this as `request.body` (FastAPI) or `req.rawBody` (Express with `body-parser`).
+- `hmac.compare_digest` runs in constant time. Comparing strings with `==` leaks information about how many leading bytes match.
+- The timestamp window protects against replay. Five minutes is a reasonable default; tighten it if your network is fast and your clocks are in sync.
+
+## Verifier in Node
+
+```ts
+import crypto from "node:crypto";
+
+const SKYVERN_API_KEY = process.env.SKYVERN_API_KEY!;
+const TOLERANCE_SECONDS = 5 * 60;
+
+export function verifySkyvernWebhook(
+  rawBody: Buffer,
+  headers: Record<string, string>,
+): boolean {
+  const signature = headers["x-skyvern-signature"];
+  const timestamp = headers["x-skyvern-timestamp"];
+  if (!signature || !timestamp) return false;
+
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  if (Math.abs(Date.now() / 1000 - ts) > TOLERANCE_SECONDS) return false;
+
+  const expected = crypto
+    .createHmac("sha256", SKYVERN_API_KEY)
+    .update(rawBody)
+    .digest("hex");
+
+  // crypto.timingSafeEqual requires equal-length buffers.
+  const expectedBuf = Buffer.from(expected, "utf-8");
+  const sigBuf = Buffer.from(signature, "utf-8");
+  if (expectedBuf.length !== sigBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, sigBuf);
+}
+```
+
+## Common pitfalls
+
+- **Re-parsing the body.** Express middleware that JSON-parses the request mutates whitespace, even if it later re-serializes. Mount `express.raw({ type: "application/json" })` for the webhook route and verify against the raw buffer.
+- **Mismatched API keys.** The signature is computed with the API key the server holds for your organization. If you rotated the key, callbacks for runs that started before the rotation are signed with the old key. Keep both keys around for at least one webhook delivery cycle.
+- **Float / int drift in your verifier.** If you re-serialize the JSON before signing, normalize numbers the way Skyvern does: integer-valued floats become ints. The simplest fix is to verify against the raw body and never re-serialize.
+- **Trailing newlines.** Some HTTP clients append a newline to the body. Skyvern's compact serialization has none. Verifying against the raw body avoids this entirely.
+
+## What if verification fails
+
+You have two recovery paths:
+
+1. **Fix the verifier and replay.** Skyvern keeps webhook delivery records and exposes [`POST /v1/runs/{run_id}/retry_webhook`](/sdk-reference/tasks/retry-run-webhook) to re-deliver after a fix. Fix the verifier, then call `retry_webhook` for the affected runs.
+2. **Switch to pull mode.** If your network reliably loses callbacks, poll `GET /v1/runs/{run_id}` until `status` reaches a terminal state instead of trusting the push. This is heavier but does not require a verifier.
+
+## Next steps
+
+- [Webhooks overview](./webhooks) — how to register a webhook URL.
+- [Retry a webhook](/sdk-reference/tasks/retry-run-webhook) — re-deliver a callback after fixing your verifier.
+- [Reliability tips](./reliability-tips) — broader production hardening.

@@ -1,0 +1,135 @@
+---
+title: skyvern doctor
+description: Diagnose installation problems with the doctor health check, and fix the most common failures.
+slug: developers/debugging/skyvern-doctor
+keywords:
+  - doctor
+  - troubleshooting
+  - install
+  - health check
+---
+
+`skyvern doctor` runs a series of installation and configuration checks and prints a single colored table summarizing what passed, what is suspect, and what is broken. Run it any time `skyvern run server` fails to start, after installing on a new machine, or when you suspect your environment drifted (Python upgrade, virtualenv reset, Playwright cache cleared).
+
+The full check list lives in `skyvern/cli/doctor.py`. The exit code is `0` when every check passes (errors and warnings count separately: a warning still exits `0`), and `1` when at least one check is in the `error` state.
+
+## What it checks
+
+Each check returns one of three statuses: `ok`, `warn`, or `error`. The summary table has four columns: check name, status, details (what the check observed), and fix (what to do about it).
+
+| Check | What it verifies |
+|---|---|
+| **Python Version** | The interpreter is `3.11`, `3.12`, or `3.13`. Older is `error`, `3.14+` is `warn`. |
+| **Config / Credentials** | A `.env` was found and `SKYVERN_API_KEY` is set in the environment. Missing key is `warn`. |
+| **Playwright Browser** | A chromium build exists. First tries `playwright install --dry-run chromium`, then falls back to filesystem checks at the platform-specific cache path. |
+| **Port 8000** | The Skyvern API port (or the `PORT` env var override) is free. In-use is `warn`, not `error` — sometimes you legitimately have it bound to a running server. |
+| **API Connectivity** | An HTTP `GET` to `<SKYVERN_BASE_URL>/api/v1/heartbeat` succeeds (defaults to `https://api.skyvern.com/api/v1/heartbeat`). Unreachable cloud is `warn` for self-hosted users. |
+| **MCP Config** | `skyvern` is registered as an MCP server in at least one of: Claude Code, Cursor, Windsurf, Claude Desktop. Missing is `warn`. |
+| **Dependency Groups** | Required Python packages import successfully: `fastmcp` and `playwright` (CLI / MCP), plus `sqlalchemy`, `alembic`, `litellm`, `anthropic`, `openai` (local / self-host). Any missing package is `error`. |
+
+The order is fixed and the checks run sequentially. If one check raises an exception, doctor catches it, marks that row as `error` with the traceback in the `detail` column, and continues.
+
+## Reading the output
+
+A clean run prints a green panel and exits `0`:
+
+```text
+                          Skyvern Doctor
+┏━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Check                 ┃ Status ┃ Details                        ┃ Fix           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Python Version        │ ok     │ 3.12.4 (...)                   │               │
+│ Config / Credentials  │ ok     │ .env: ~/.skyvern/.env          │               │
+│ Playwright Browser    │ ok     │ chromium found (--dry-run)     │               │
+│ Port 8000             │ ok     │ available                      │               │
+│ API Connectivity      │ ok     │ heartbeat 200                  │               │
+│ MCP Config            │ ok     │ Claude Code, Cursor            │               │
+│ Dependency Groups     │ ok     │ all groups present             │               │
+└───────────────────────┴────────┴────────────────────────────────┴───────────────┘
+╭──────────────────────────────────────────────────────────────────────────────────╮
+│ 7 passed                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+```
+
+A failed dependency check, by contrast, prints a red panel and exits `1`:
+
+```text
+│ Dependency Groups     │ error  │ missing: litellm, anthropic    │ uv sync       │
+```
+
+## Common failures and fixes
+
+### "Python Version: error — Skyvern requires Python 3.11-3.13"
+
+You are on Python 3.10 or older. Reinstall in a 3.11+ virtualenv:
+
+```bash
+uv venv --python 3.12
+uv sync --group dev
+uv run skyvern doctor
+```
+
+### "Config / Credentials: warn — Run `skyvern login` ..."
+
+`SKYVERN_API_KEY` is not in the environment or `.env`. For Skyvern Cloud:
+
+```bash
+skyvern login
+```
+
+For self-hosted, `skyvern run server` writes a generated key into `~/.skyvern/.env` on first boot. If the file is missing, run the server once and let it bootstrap.
+
+### "Playwright Browser: error"
+
+The Playwright chromium build is missing. Install it:
+
+```bash
+playwright install chromium
+```
+
+If Playwright itself is missing, that shows up as a `Dependency Groups` failure first — fix that one before retrying the browser check.
+
+### "Port 8000: warn — already in use"
+
+Either a previous `skyvern run server` is still running, or some other service is bound to `:8000`. List what is on the port and either reuse it or stop it:
+
+```bash
+lsof -iTCP:8000 -sTCP:LISTEN
+skyvern stop server  # if the offender is Skyvern itself
+```
+
+If you intentionally want to run on a different port, set `PORT=8001` in your `.env` and re-run doctor — it will read the override.
+
+### "API Connectivity: warn"
+
+Doctor tried to reach Skyvern Cloud and could not. For self-hosted users this is expected if you do not point at the cloud; you can ignore the warning. For cloud users, check your network or proxy.
+
+### "Dependency Groups: error — missing: ..."
+
+A package is not importable. Run `uv sync` (or `uv sync --group dev` for the development tree). If you installed via pip, `pip install -U skyvern[cli]` covers the CLI/MCP groups.
+
+### "MCP Config: warn"
+
+Skyvern is not registered with any MCP-aware client. Run:
+
+```bash
+skyvern setup
+```
+
+The setup command writes Skyvern into Claude Code, Cursor, Windsurf, or Claude Desktop config files, depending on what is installed.
+
+## Running doctor in CI
+
+Doctor is non-interactive and exits non-zero on failure, so it works as a smoke test in CI:
+
+```yaml
+- run: uv run skyvern doctor
+```
+
+Pair it with a `skyvern run server` boot test if you want to catch runtime startup failures that doctor cannot see (database migrations, port collisions in a containerized runner).
+
+## Next steps
+
+- [Troubleshooting guide](./troubleshooting-guide) — runtime issues that doctor cannot detect.
+- [Quickstart](/developers/getting-started/quickstart) — fresh-install procedure if doctor cannot get you to a clean state.
+- [Self-hosted overview](/developers/self-hosted/overview) — production hardening once doctor is green.

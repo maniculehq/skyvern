@@ -1,0 +1,110 @@
+---
+title: Embedded mode
+description: Run the Skyvern server in-process with Skyvern.local() for local scripts, tests, and zero-config experiments.
+slug: developers/getting-started/embedded-mode
+keywords:
+  - Skyvern.local
+  - embedded
+  - in-memory
+  - sqlite
+---
+
+`Skyvern.local()` runs a full Skyvern FastAPI app inside your Python process, talking to it over an in-process httpx client instead of the network. There is no `skyvern run server` to start and no `:8000` port to manage. This is the right tool for unit tests, experimental scripts, and notebook workflows where the heavyweight Cloud or self-hosted setup is overkill.
+
+## When to use it
+
+Use embedded mode when you want all of these:
+
+- a real Skyvern agent (not a mock);
+- without running a separate server process;
+- without configuring Postgres, Redis, or a cloud API key;
+- and you do not need workflow scheduling, cloud browser sessions, or multi-worker execution.
+
+If you need scheduling or shared sessions across multiple processes, use Skyvern Cloud or a self-hosted server instead. See the [self-hosted overview](/developers/self-hosted/overview).
+
+## Three ways to call it
+
+The factory has three knobs: `llm_config`, `settings`, and `use_in_memory_db`. Most callers only need `use_in_memory_db`.
+
+### Zero-config (auto-detect)
+
+```python
+from skyvern import Skyvern
+
+# If DATABASE_STRING is set in env or .env, uses Postgres.
+# Otherwise spins up an in-memory SQLite.
+skyvern = Skyvern.local()
+result = await skyvern.run_task(
+    prompt="What is on the front page of news.ycombinator.com?",
+)
+print(result.output)
+```
+
+This picks up `OPENAI_API_KEY` (or whichever provider you configure) from your environment and uses litellm to route LLM calls. The auto-detect logic looks at three places, in order: a `settings={"DATABASE_STRING": ...}` override, the `DATABASE_STRING` env var, and the `.env` file at the resolved backend env path. If any is set, persistent mode wins.
+
+### Force in-memory
+
+```python
+skyvern = Skyvern.local(use_in_memory_db=True)
+```
+
+This bypasses the auto-detect and is useful when you have `DATABASE_STRING` set for production code but want a clean ephemeral DB for tests. Skyvern creates the schema on boot via `_bootstrap_sqlite`, mints a local org, and writes the API key into `~/.skyvern/.env`. The DB lives in process memory; it disappears when your script exits.
+
+### Force persistent
+
+```python
+skyvern = Skyvern.local(
+    use_in_memory_db=False,
+    settings={
+        "DATABASE_STRING": "postgresql+psycopg://skyvern@localhost/skyvern",
+        "SKYVERN_API_KEY": "sk-...",
+    },
+)
+```
+
+Persistent mode is the right pick when you want to keep run history and artifacts across script invocations but still avoid running a long-lived server. It refuses to start without `SKYVERN_API_KEY` and `DATABASE_STRING`, raising a `ValueError` early.
+
+## Custom LLM configuration
+
+The default LLM is whatever `LLM_KEY` resolves to (typically `OPENAI_GPT5_5`). Pass `llm_config` to override:
+
+```python
+from skyvern import Skyvern
+from skyvern.forge.sdk.api.llm.models import LLMConfig
+
+skyvern = Skyvern.local(
+    llm_config=LLMConfig(
+        model_name="gpt-4o",
+        required_env_vars=["OPENAI_API_KEY"],
+        supports_vision=True,
+        add_assistant_prefix=False,
+    )
+)
+```
+
+The custom config registers as `CUSTOM_LLM` and replaces `LLM_KEY` for the lifetime of this Skyvern instance. For multi-model setups (primary + secondary), pass an `LLMRouterConfig` instead.
+
+## What works and what does not
+
+In-memory mode supports the full agent surface: `run_task`, `run_workflow`, `extract`, `click`, `navigate`, workflow CRUD, and any LLM provider that litellm supports. Artifacts are written to a local temp directory and exposed as `file://` URIs.
+
+These features require persistent storage (Postgres) or Skyvern Cloud, and will not work in in-memory mode:
+
+- **Workflow scheduling.** Schedules need a durable scheduling backend. The schedule routes return `501 Not Implemented`.
+- **Cloud browser sessions.** They depend on S3- or Azure-backed shared state.
+- **Rate limiting.** The cloud rate limiter relies on Redis, which embedded mode does not start.
+- **Multi-worker execution.** Embedded mode runs one process; the Temporal worker pool that powers v2's swarm is not booted.
+
+Persistent mode (in-process FastAPI + Postgres) lifts the rate-limit and scheduling restrictions. Cloud browser sessions still require the cloud bucket configuration and are not available in any embedded variant.
+
+## Behavior parity with `skyvern run server`
+
+The embedded server uses the same FastAPI factory (`api_app.create_api_app`), the same routers, and the same middleware stack as the standalone server. From the SDK's perspective, the only difference is the transport: `Skyvern.local()` injects an in-process httpx client, while `Skyvern(api_key=...)` uses an HTTPS connection.
+
+That means everything you read about routes, request shapes, and response shapes applies equally to embedded mode, with the caveats above.
+
+## Next steps
+
+- [In-memory mode](/developers/self-hosted/in-memory-mode) — the unsupported-features list, in detail.
+- [Configuration reference](/developers/self-hosted/configuration-reference) — every setting you can pass to `settings={...}`.
+- [Quickstart](./quickstart) — the standard `skyvern quickstart` setup if embedded mode is not the right fit.

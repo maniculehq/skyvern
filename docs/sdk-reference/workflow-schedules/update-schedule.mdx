@@ -1,0 +1,106 @@
+---
+title: "schedules_update"
+description: "Replace the cron, timezone, parameters, name, or description on an existing schedule."
+slug: sdk-reference/workflow-schedules/update-schedule
+---
+
+The update endpoint is a full replacement, not a patch. Send the same body shape you would for [`schedules_create`](./create-schedule); every field you include overwrites the corresponding field on the schedule. The same validation runs (cron parses, timezone is IANA, parameters match the workflow schema), and the server keeps the DB and the scheduling backend consistent: if the backend update fails after the DB write, Skyvern rolls the row back to its previous state.
+
+<Note>
+To toggle just the enabled flag, prefer the dedicated [`schedules_enable`](./enable-schedule) and [`schedules_disable`](./disable-schedule) endpoints. They are cheaper, do not re-validate parameters, and never trigger a rollback path.
+</Note>
+
+<CodeGroup>
+```python Python
+resp = await client.schedules_update(
+    workflow_permanent_id="wpid_invoices",
+    workflow_schedule_id="ws_abc123",
+    cron_expression="0 6 * * *",
+    timezone="UTC",
+    enabled=True,
+    parameters={"region": "EU-West"},
+    name="Daily 06:00 UTC",
+)
+print(resp.next_runs[0])
+```
+
+```typescript TypeScript
+const resp = await skyvern.schedulesUpdate("wpid_invoices", "ws_abc123", {
+  cron_expression: "0 6 * * *",
+  timezone: "UTC",
+  enabled: true,
+  parameters: { region: "EU-West" },
+  name: "Daily 06:00 UTC",
+});
+console.log(resp.next_runs[0]);
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `workflow_permanent_id` | `str` | Yes | - | Path. The workflow's permanent id. |
+| `workflow_schedule_id` | `str` | Yes | - | Path. The schedule id (`ws_...`). |
+| `cron_expression` | `str` | Yes | - | New 5-field cron expression. |
+| `timezone` | `str` | Yes | - | IANA timezone (e.g. `UTC`). |
+| `enabled` | `bool` | No | `True` | New enabled state. |
+| `parameters` | `dict[str, Any] \| None` | No | `None` | New parameter override map. Replaces the existing one in full. |
+| `name` | `str \| None` | No | `None` | New label. |
+| `description` | `str \| None` | No | `None` | New description. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+### Returns `WorkflowScheduleResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schedule` | `WorkflowSchedule` | The updated schedule. |
+| `next_runs` | `list[datetime]` | Up to five upcoming fire times under the new cron and timezone. |
+
+### Errors
+
+- `400 Bad Request` — invalid cron expression, invalid timezone, or parameter validation failed.
+- `404 Not Found` — workflow or schedule id not found, or the schedule does not belong to the workflow in the path.
+- `501 Not Implemented` — scheduling is disabled in this build.
+- `502 Bad Gateway` — backend sync failed. The DB has been rolled back to the previous state; safe to retry.
+
+### Related
+
+- [`schedules_enable`](./enable-schedule) / [`schedules_disable`](./disable-schedule) — pause and resume without re-sending the body.
+- [`schedules_delete`](./delete-schedule) — remove instead of editing.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

@@ -1,0 +1,85 @@
+---
+title: "schedules_get"
+description: "Fetch a single workflow schedule with its next five fire times."
+slug: sdk-reference/workflow-schedules/get-schedule
+---
+
+Use this when you have both a workflow id and a schedule id and need the full schedule record, including the backend binding and the next computed fire times. The path is scoped to the parent workflow, so the server rejects mismatched ids with `404`.
+
+<CodeGroup>
+```python Python
+resp = await client.schedules_get(
+    workflow_permanent_id="wpid_invoices",
+    workflow_schedule_id="ws_abc123",
+)
+print(resp.schedule.cron_expression, resp.next_runs)
+```
+
+```typescript TypeScript
+const resp = await skyvern.schedulesGet("wpid_invoices", "ws_abc123");
+console.log(resp.schedule.cron_expression, resp.next_runs);
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `workflow_permanent_id` | `str` | Yes | The workflow's permanent id (`wpid_...`). |
+| `workflow_schedule_id` | `str` | Yes | The schedule id (`ws_...`). |
+| `request_options` | `RequestOptions` | No | Per-request configuration (see below). |
+
+### Returns `WorkflowScheduleResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schedule` | `WorkflowSchedule` | Full schedule record, including `temporal_schedule_id` (the wire alias for `backend_schedule_id`). |
+| `next_runs` | `list[datetime]` | Up to five upcoming fire times in the schedule's timezone. |
+
+`schedule.parameters` is the override map the schedule will apply at fire time; if the workflow defines a parameter the schedule does not override, the workflow's default is used.
+
+### Errors
+
+- `404 Not Found` — `Workflow {wpid} not found`, `Schedule {ws_id} not found`, or the schedule belongs to a different workflow than the one in the path.
+- `501 Not Implemented` — scheduling is disabled in this build.
+
+### Related
+
+- [`schedules_update`](./update-schedule) — mutate any field on the schedule.
+- [`schedules_disable`](./disable-schedule) / [`schedules_enable`](./enable-schedule) — toggle without changing other fields.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

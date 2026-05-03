@@ -1,0 +1,105 @@
+---
+title: Run engines
+description: Pick the right Skyvern run engine for the job, and understand the cost and capability trade-offs across the five options.
+slug: developers/features/run-engines
+keywords:
+  - RunEngine
+  - skyvern-1.0
+  - skyvern-2.0
+  - openai-cua
+  - anthropic-cua
+  - ui-tars
+---
+
+Every Skyvern run goes through one of five engines. Picking the right one is mostly about matching the engine's reasoning style to the task, with a secondary eye on cost and which features (workflows, code caching, computer-use models) the engine supports.
+
+The engine is set on the `engine` field of `run_task` (or the `engine` query/body param in REST). The five enum values are defined in `skyvern/schemas/runs.py:350` as:
+
+| Engine | Enum value | Wire string |
+|---|---|---|
+| Skyvern 1.0 | `RunEngine.skyvern_v1` | `"skyvern-1.0"` |
+| Skyvern 2.0 | `RunEngine.skyvern_v2` | `"skyvern-2.0"` |
+| OpenAI computer-use | `RunEngine.openai_cua` | `"openai-cua"` |
+| Anthropic computer-use | `RunEngine.anthropic_cua` | `"anthropic-cua"` |
+| UI-TARS | `RunEngine.ui_tars` | `"ui-tars"` |
+
+The last three are bundled by `CUA_ENGINES` in the same file: they are forwarded to a vendor's computer-use model (OpenAI's CUA, Anthropic's computer-use beta, ByteDance's UI-TARS) and run through Skyvern's task v1 dispatch path.
+
+## How the dispatcher routes engines
+
+When a request hits `POST /v1/run/tasks`, Skyvern reads `run_request.engine` and branches:
+
+- `skyvern-1.0` and any of the three CUA engines run through `task_v1_service`. Skyvern allocates a single agent that walks the page step by step. CUA engines additionally hand control of action selection to the vendor model; Skyvern still drives the browser through Playwright.
+- `skyvern-2.0` runs through `task_v2_service`. The v2 engine is a swarm: Skyvern decomposes the prompt into sub-tasks, runs them in parallel where possible, and composes the result. v2 also writes the run as a workflow run row, which is why `app_url` for v2 points at `/runs/{workflow_run_id}` while v1 points at `/runs/{task_id}`.
+- Any other value yields `400 Bad Request` ("Invalid agent engine").
+
+This dispatch lives in `skyvern/forge/sdk/routes/agent_protocol.py:191-349`.
+
+## When to use which
+
+### Skyvern 2.0 — the default for new automations
+
+Pick v2 unless you have a reason not to. The swarm design handles long flows that previous Skyvern versions struggled with: multi-page checkouts, search-then-extract pipelines, and any flow where the right next action depends on what was found two steps back. v2 is the only engine that supports `publish_workflow=True` on `run_task`, which writes the executed run back as a reusable workflow.
+
+```python
+result = await client.run_task(
+    prompt="Find every job at acme.com that requires Python, and extract the salary range.",
+    engine=RunEngine.skyvern_v2,
+    publish_workflow=True,
+    wait_for_completion=True,
+)
+```
+
+Cost note: v2 spawns sub-tasks, so step counts and LLM cost run higher than v1 for the same prompt. For short, single-page tasks, v1 is usually cheaper.
+
+### Skyvern 1.0 — short, single-page tasks
+
+v1 is one agent doing one thing. It is the right pick when the prompt fits the shape "go to URL X and do Y" and Y does not depend on cross-page reasoning. Form fills, single-page extractions, and "click the next button until you see Z" loops belong here.
+
+```python
+result = await client.run_task(
+    prompt="Submit this contact form with the values in payload.",
+    url="https://example.com/contact",
+    engine=RunEngine.skyvern_v1,
+    wait_for_completion=True,
+)
+```
+
+v1 supports the same generated-code caching path as v2, set via `run_with="code"` or `run_with="agent"`.
+
+### `openai-cua`, `anthropic-cua`, `ui-tars` — vendor computer-use models
+
+The CUA engines exist for two reasons: you want to A/B Skyvern's planner against the vendor's, or you have an account-level quota and you want to spend it. They share Skyvern's task v1 lifecycle, browser allocation, and webhook delivery, so the externals (run id, status enum, recording URL) look the same as a v1 run. Internally the action picker is the vendor model.
+
+Trade-offs:
+
+- **OpenAI CUA** (`openai-cua`) — closest to v1 in cost and behaviour. Works well on familiar e-commerce-shaped pages.
+- **Anthropic CUA** (`anthropic-cua`) — strong on long forms with conditional fields. Highest cost per step in our benchmarks.
+- **UI-TARS** (`ui-tars`) — open model from ByteDance; useful when you cannot send page contents to a US-based provider but still want an action picker that is not Skyvern's.
+
+If you do not have a strong reason to use a CUA engine, default to v2 or v1 instead. The vendor models are not Skyvern's optimization target, so improvements to the Skyvern engine do not flow into them.
+
+## Picking by feature
+
+| Feature | v1 | v2 | CUA engines |
+|---|---|---|---|
+| `publish_workflow=True` on `run_task` | no | **yes** | no |
+| Swarm / sub-tasks | no | yes | no |
+| `run_with="code"` (cached Playwright) | yes | yes | no |
+| `data_extraction_schema` enforcement | yes | yes | yes |
+| Cloud browser sessions | yes | yes | yes |
+| Vendor-model action picker | no | no | yes |
+
+For workflow blocks, the per-block engine is set in the block YAML (`engine: skyvern-1.0` / `skyvern-2.0`). The same trade-offs apply: v2 for blocks that need cross-step reasoning, v1 for narrow single-page actions.
+
+## Cost shape
+
+Step count is the dominant cost driver. v2 typically uses 2-4× the steps of v1 on the same prompt, but compresses several "v1 prompt + parse + repeat" cycles into one decision, so total wall-clock time is often lower. CUA engines vary by vendor pricing; at the time of writing Anthropic CUA is the most expensive per step and OpenAI CUA is comparable to v1.
+
+`max_steps` caps the budget: a v2 run that hits its cap returns with `status="timed_out"` and whatever output the swarm composed before being terminated.
+
+## Next steps
+
+- [Run a task](/cloud/getting-started/run-a-task) — the everyday SDK call that takes the `engine` field.
+- [Code caching](./code-caching) — combine v1 or v2 with cached Playwright code.
+- [Cost control](/developers/optimization/cost-control) — reduce step count and vendor spend.

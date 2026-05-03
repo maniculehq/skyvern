@@ -142,17 +142,23 @@
               "developers/getting-started/quickstart",
               "developers/getting-started/ai-agents-quickstart",
               "developers/getting-started/mcp",
+              "developers/getting-started/embedded-mode",
+              "developers/getting-started/cli-capabilities-discovery",
               "integrations/cli"
             ]
           },
           {
             "group": "Core Features",
             "pages": [
+              "developers/features/run-engines",
               "developers/features/captcha-and-bot-bypass",
               "developers/features/browser-sessions",
               "developers/features/proxy-and-geo-targeting",
               "developers/features/authentication-and-2fa",
-              "developers/features/code-caching"
+              "developers/features/credential-providers",
+              "developers/features/code-caching",
+              "developers/features/scripts-and-code-caching",
+              "developers/features/observability"
             ]
           },
           {
@@ -188,9 +194,12 @@
             "group": "Going to Production",
             "pages": [
               "developers/going-to-production/webhooks",
+              "developers/going-to-production/webhook-signatures",
               "developers/going-to-production/proxy-geolocation",
               "developers/going-to-production/error-handling",
-              "developers/going-to-production/reliability-tips"
+              "developers/going-to-production/reliability-tips",
+              "developers/going-to-production/legacy-endpoints",
+              "developers/going-to-production/artifact-signed-urls"
             ]
           },
           {
@@ -199,6 +208,7 @@
               "developers/debugging/using-artifacts",
               "developers/debugging/troubleshooting-guide",
               "developers/debugging/observability-with-laminar",
+              "developers/debugging/skyvern-doctor",
               "developers/debugging/faq"
             ]
           },
@@ -208,10 +218,12 @@
               "developers/self-hosted/overview",
               "developers/self-hosted/docker",
               "developers/self-hosted/llm-configuration",
+              "developers/self-hosted/configuration-reference",
               "developers/self-hosted/browser",
               "developers/self-hosted/proxy",
               "developers/self-hosted/kubernetes",
               "developers/self-hosted/storage",
+              "developers/self-hosted/in-memory-mode",
               "integrations/local-llms"
             ]
           }
@@ -223,7 +235,8 @@
           "cookbooks/overview",
           "cookbooks/bulk-invoice-downloader",
           "cookbooks/job-application-filler",
-          "cookbooks/healthcare-portal-data"
+          "cookbooks/healthcare-portal-data",
+          "cookbooks/run-skyvern-from-claude-code"
         ]
       },
       {
@@ -325,6 +338,35 @@
               "sdk-reference/workflows/delete-workflow",
               "sdk-reference/workflows/get-workflow-runs",
               "sdk-reference/workflows/update-workflow-folder"
+            ]
+          },
+          {
+            "group": "Workflow Schedules",
+            "pages": [
+              "sdk-reference/workflow-schedules/list-all-schedules",
+              "sdk-reference/workflow-schedules/list-schedules-for-workflow",
+              "sdk-reference/workflow-schedules/create-schedule",
+              "sdk-reference/workflow-schedules/get-schedule",
+              "sdk-reference/workflow-schedules/update-schedule",
+              "sdk-reference/workflow-schedules/enable-schedule",
+              "sdk-reference/workflow-schedules/disable-schedule",
+              "sdk-reference/workflow-schedules/delete-schedule"
+            ]
+          },
+          {
+            "group": "Folders",
+            "pages": [
+              "sdk-reference/folders/create-folder",
+              "sdk-reference/folders/list-folders",
+              "sdk-reference/folders/get-folder",
+              "sdk-reference/folders/update-folder",
+              "sdk-reference/folders/delete-folder"
+            ]
+          },
+          {
+            "group": "Runs",
+            "pages": [
+              "sdk-reference/runs/list-runs"
             ]
           },
           {

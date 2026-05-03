@@ -1,0 +1,105 @@
+---
+title: Observability
+description: Map Skyvern's logs, traces, metrics, and analytics surfaces, and pick the right one for the question you are asking.
+slug: developers/features/observability
+keywords:
+  - observability
+  - opentelemetry
+  - laminar
+  - posthog
+  - structlog
+---
+
+Skyvern emits four kinds of telemetry, each useful for a different question. This page is the dispatcher: which surface to look at first, what it costs to enable, and where the configuration lives.
+
+| Surface | Question it answers | Default state |
+|---|---|---|
+| **structlog JSON logs** | What did this request do, in what order, and at which line? | Always on. |
+| **OpenTelemetry traces and metrics** | Where did time go across services, and how many runs per minute? | Off (`OTEL_ENABLED=False`). |
+| **Laminar tracing** | What did the LLM see, and what did it return, on this run? | Off (set `LMNR_PROJECT_API_KEY`). |
+| **PostHog analytics** | Aggregate product usage. Mostly internal. | On (set `SKYVERN_TELEMETRY=False` to disable). |
+
+For Laminar specifically there is already a dedicated page at [Observability with Laminar](/developers/debugging/observability-with-laminar). Use this page to decide which surface to reach for; drop into the Laminar page when you have decided on Laminar.
+
+## structlog JSON logs
+
+Skyvern logs everything through structlog (`skyvern/forge/sdk/forge_log.py`). Every record is structured: a `request_id`, the org id, the run id, and the surrounding context are attached automatically by `request_middleware` (`skyvern/forge/api_app.py:283-300`).
+
+Set `JSON_LOGGING=True` to emit one JSON object per line, ready for ingestion by Datadog, Loki, or any other log shipper. With `JSON_LOGGING=False` (the default in dev) Skyvern uses structlog's pretty console renderer.
+
+Useful filters when grepping logs:
+
+- `request_id=...` — every log line for a single HTTP request.
+- `workflow_run_id=wr_...` — every line that touched a specific workflow run, including LLM calls and webhook deliveries.
+- `task_id=tsk_...` or `task_v2_id=tsk_v2_...` — same for v1 / v2 tasks.
+
+Logs are the right first stop for debugging a single request. Use them when you can name the run id; they scale poorly when you cannot.
+
+## OpenTelemetry
+
+OTEL is the right tool when the question is aggregate ("how is p95 latency on `/v1/run/tasks` trending?") or cross-service ("where did the time go on this run, between the API, the agent loop, and the browser?").
+
+Turn it on by setting `OTEL_ENABLED=True` and pointing `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector (`skyvern/config.py:534-541`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OTEL_ENABLED` | `False` | Master switch. |
+| `OTEL_SERVICE_NAME` | `skyvern` | Service name on traces. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `""` | OTLP/HTTP endpoint of your collector. |
+| `OTEL_METRICS_ENABLED` | `True` | Emit metrics if exporter is reachable. |
+| `OTEL_LOGS_ENABLED` | `True` | Emit logs through OTEL too. |
+| `OTEL_EXPORTER_INSECURE` | `True` | Allow plaintext OTLP. |
+
+The bootstrap path is `skyvern/forge/api_app.py:196-211`. It only fires when both `OTEL_ENABLED=True` and the optional `cloud.observability.otel_setup` module is importable. The cloud package adds OTEL exporters and instrumentations as the `cloud` extra; install it on self-hosted with `pip install skyvern[cloud]` if you want OTEL.
+
+Skyvern attaches `task_id`, `task_v2_id`, and `workflow_run_id` as span attributes automatically (see the `if settings.OTEL_ENABLED:` blocks in `agent_protocol.py`), so traces are joinable to other systems that key on those ids.
+
+## Laminar tracing
+
+Laminar (`lmnr.so`) is an LLM-aware tracing tool. It captures the prompts you sent, the responses you got back, the tool calls in between, and the latency of each step. Skyvern wires it through the `Lmnr.initialize` call at `api_app.py:215-232`, gated on `LMNR_PROJECT_API_KEY`.
+
+Use Laminar when:
+
+- a run produces wrong output and you want to see what the LLM actually saw on each step;
+- you are evaluating prompt changes and want side-by-side traces;
+- you need to share a trace with a vendor (Anthropic, OpenAI) when filing a bug against the model.
+
+For setup details, see [Observability with Laminar](/developers/debugging/observability-with-laminar). Laminar and OTEL coexist; they answer different questions and run independently.
+
+## PostHog analytics
+
+PostHog is product-usage telemetry. Skyvern emits events through `skyvern/analytics.py`: a small set of named events (`skyvern-oss-run-task`, `skyvern-oss-folder-create`, etc.) with minimal metadata. The data goes to Skyvern's PostHog project by default; see `POSTHOG_PROJECT_API_KEY` in `skyvern/config.py:163-166`.
+
+Two reasons to keep it on:
+
+- It helps Skyvern understand which features are used.
+- It is what surfaces in the dashboard's usage graphs.
+
+One reason to turn it off:
+
+```bash
+SKYVERN_TELEMETRY=false
+```
+
+Set in your `.env` and PostHog calls become no-ops. Use this for production deployments handling sensitive data or for air-gapped self-hosted setups.
+
+The MCP server has a separate PostHog project key (`MCP_POSTHOG_PROJECT_API_KEY`); the same `SKYVERN_TELEMETRY` switch turns it off.
+
+## What to reach for, when
+
+| Question | Tool |
+|---|---|
+| "This single run failed. Why?" | structlog logs filtered by `run_id`. |
+| "The agent picked the wrong action on step 7." | Laminar trace for that run. |
+| "p99 of `/v1/run/tasks` doubled overnight." | OTEL metrics, then drill into traces. |
+| "How many runs hit `timed_out` last week?" | OTEL metrics, or DB query against `task_runs`. |
+| "Did the webhook actually fire?" | structlog logs filtered by `webhook_url` plus webhook log artifact (if `ENABLE_LOG_ARTIFACTS=True`). |
+| "Which feature do customers use most?" | PostHog dashboard. |
+
+If you start with the wrong tool, you spend a lot of time ruling things out. The dispatcher above is the lookup we use ourselves.
+
+## Next steps
+
+- [Observability with Laminar](/developers/debugging/observability-with-laminar) — Laminar setup deep-dive.
+- [Using artifacts](/developers/debugging/using-artifacts) — screenshots, HARs, and log artifacts that complement structured telemetry.
+- [Configuration reference](/developers/self-hosted/configuration-reference) — every observability-related setting in one place.

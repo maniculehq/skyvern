@@ -1,0 +1,140 @@
+---
+title: Run Skyvern from Claude Code
+description: Drive browser automation from Claude Code, Cursor, or Windsurf via the Skyvern MCP server, with credential storage and reusable browser sessions.
+slug: cookbooks/run-skyvern-from-claude-code
+keywords:
+  - mcp
+  - claude code
+  - cursor
+  - windsurf
+  - agent
+---
+
+You have Claude Code (or Cursor, or Windsurf) and you want it to control a real browser. Skyvern's MCP server is the bridge: it exposes ~75 tools the AI can call to open a session, fill a form, scrape a table, or run a saved workflow. After ten minutes of setup the assistant can do anything `skyvern browser` can do, with credentials, sessions, and run history persisted to your Skyvern account.
+
+This walkthrough takes you from "Claude Code installed" to "Claude is logged into your invoice portal and downloading PDFs."
+
+## Prerequisites
+
+- Skyvern installed: `pip install skyvern` (or `uv add skyvern`).
+- A Skyvern account. If you do not have one yet: `skyvern login` opens a browser for OAuth.
+- Claude Code, Cursor, or Windsurf installed.
+
+If `skyvern doctor` reports anything in error state, fix that first ([Skyvern doctor](/developers/debugging/skyvern-doctor)).
+
+## 1. Register Skyvern with your AI client
+
+`skyvern setup` writes Skyvern into the MCP config files of every supported client it detects. Run it once:
+
+```bash
+skyvern setup
+```
+
+Sample output:
+
+```text
+Detected: Claude Code, Cursor
+Wrote skyvern entry to ~/.config/claude/mcp.json
+Wrote skyvern entry to ~/Library/Application Support/Cursor/User/mcp.json
+Skyvern is now reachable from your AI client.
+```
+
+Restart the client. After the restart, Claude Code's tool list should include `skyvern_browser_session_create`, `skyvern_browser_act`, and friends.
+
+If `skyvern setup` does not detect your client, check the file paths in `skyvern/cli/setup_commands.py` and add the entry manually.
+
+## 2. Drop the Skyvern skill into your project (optional but recommended)
+
+Skyvern ships a Claude Code "skill" that teaches the model when to reach for which Skyvern tool. The skill lives at `skyvern/cli/skills/skyvern/SKILL.md` and includes a classification table ("quick yes/no → use `validate`; same-page multi-step → use `act`; multi-page reusable automation → use `workflow create`").
+
+Install it into your project:
+
+```bash
+skyvern skill install skyvern --project .
+```
+
+Now Claude Code reads `SKILL.md` for every conversation in this directory and uses the classification rules instead of guessing.
+
+## 3. Verify the connection
+
+Start a new chat in Claude Code and ask:
+
+> What Skyvern MCP tools are available?
+
+You should get back a list that includes `browser_session_*`, `browser_act`, `browser_extract`, `workflow_run`, and so on. If the list is empty, the client did not pick up the new MCP entry; restart it.
+
+## 4. First end-to-end task
+
+Have Claude run a quick browser task on your behalf. Try a prompt like:
+
+> Use Skyvern to open news.ycombinator.com and tell me the title of the top story.
+
+Claude will:
+
+1. Call `browser_session_create` to allocate a cloud session.
+2. Call `browser_extract` with a schema like `{"top_story": {"type": "string"}}`.
+3. Read the result and answer in the chat.
+
+The whole exchange takes ~30 seconds. If you watch the Skyvern dashboard at `app.skyvern.com/runs`, you will see a fresh run row.
+
+## 5. Store a credential the assistant can use
+
+Hard-coding a password into a chat message is the wrong shape. Use Skyvern's credential vault instead:
+
+```bash
+skyvern credential add
+```
+
+The CLI prompts for the credential type (password / credit card / TOTP), the values, and a memorable name. Skyvern stores it encrypted in the vault you configured ([credential providers](/developers/features/credential-providers)).
+
+Now ask Claude:
+
+> Use Skyvern to log into example-portal.com with the credential named `acme-billing` and download every invoice from 2026.
+
+Claude calls `browser_login` with `credential_name="acme-billing"`, then `browser_act` to navigate to the invoices section, then `browser_download` for each PDF. The credential never appears in the conversation; Skyvern injects it at the action layer.
+
+## 6. Re-use the browser across calls
+
+Each `browser_session_create` allocates a fresh session, which is wasteful when you are about to make ten calls. Tell Claude to reuse the session:
+
+> Keep the Skyvern session open between commands. Open hn.example.com, log in with `hn-account`, and tell me the title of every post on the front page.
+
+Claude makes one `browser_session_create` and threads the session id through every subsequent tool call. When you are done:
+
+> Close the Skyvern browser session.
+
+If you forget, Skyvern times the session out after the configured TTL (`DEBUG_SESSION_TIMEOUT_MINUTES`, default `20` minutes).
+
+## 7. Promote the flow to a workflow
+
+The classification rules in the skill are explicit: "if the user says `set up`, `automate this weekly`, or anything that implies repeatability, build a workflow." When you reach that point:
+
+> Skyvern, set up a workflow that downloads every Acme invoice every Monday morning.
+
+Claude calls `workflow_create` to build a multi-block automation, then `schedule_create` to add a cron schedule. Both objects show up in your Skyvern dashboard, where you can edit them by hand or kick off ad-hoc runs.
+
+## When Claude makes the wrong choice
+
+Two failure modes worth recognizing:
+
+- **The assistant uses `WebFetch` instead of Skyvern.** It happens when the skill is not installed in the right project. Re-run `skyvern skill install skyvern --project .`.
+- **The assistant runs `run-task` for a one-off when you wanted a workflow.** Tell it explicitly: "set this up as a reusable workflow." The skill's decision rules respect explicit intent.
+
+## What this is and is not
+
+This setup is the right shape when:
+
+- you want exploratory, conversational browser automation;
+- the credentials are personal or team-scoped (one Bitwarden vault, one Skyvern account);
+- you can tolerate ~5-30 second latency per action.
+
+It is the wrong shape when:
+
+- you need to run the same automation 10,000 times a day. Drive that from a script, not a chat.
+- the prompt is identical every time. Build the workflow once and call `run_workflow`.
+
+## Next steps
+
+- [MCP server](/developers/getting-started/mcp) — the lower-level "what is the MCP server" page.
+- [CLI capabilities discovery](/developers/getting-started/cli-capabilities-discovery) — the runtime command tree the agent can introspect.
+- [Build a workflow](/cloud/building-workflows/build-a-workflow) — promote a one-off chat into a reusable automation.

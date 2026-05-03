@@ -1,0 +1,134 @@
+---
+title: Signed artifact URLs
+description: Hand out time-limited download links for run artifacts without exposing your API key, with key rotation and per-org expiry.
+slug: developers/going-to-production/artifact-signed-urls
+keywords:
+  - artifacts
+  - hmac
+  - signed url
+  - keyring
+---
+
+Skyvern can issue HMAC-signed URLs for `/v1/artifacts/{id}/content`. The signed URL carries an expiry, a key id, and a signature in the query string, and the endpoint validates it without checking the caller's API key. This is the right tool when you want to share a screenshot or recording with a third party (a customer, an auditor, a Slack bot) without giving them an org credential.
+
+This page explains how to enable signing, how key rotation works, and what the URL format looks like. The runtime live in `skyvern/forge/sdk/artifact/signing.py`; the integration point is the `ARTIFACT_CONTENT_HMAC_KEYRING` setting in `skyvern/config.py:481-505`.
+
+## When signing turns on
+
+Skyvern signs the content URL only when `ARTIFACT_CONTENT_HMAC_KEYRING` is set on the server. With the setting unset (the default), `/v1/artifacts/{id}/content` requires the org's API key, exactly like every other Skyvern endpoint, and Skyvern returns plain unsigned URLs.
+
+Set the keyring as a JSON string. The simplest valid value:
+
+```bash
+ARTIFACT_CONTENT_HMAC_KEYRING='{"current_kid":"2026-04-01-v1","keys":{"2026-04-01-v1":{"secret":"<32+ random bytes>","created_at":"2026-04-01"}}}'
+```
+
+`current_kid` is the key id used to sign new URLs. `keys` is the full set of valid keys; URLs signed with any key still in the dict will validate. Generate the secret with `python -c 'import secrets; print(secrets.token_urlsafe(32))'` or `openssl rand -base64 32`.
+
+The `parse_keyring` helper validates the JSON on every parse, with an `lru_cache` so a hot path is not paying JSON cost on every request. Skyvern fails fast if `current_kid` is not in `keys`.
+
+## URL shape
+
+A signed content URL looks like:
+
+```
+https://api.skyvern.com/v1/artifacts/art_abc123/content?
+  expiry=1714579200&
+  kid=2026-04-01-v1&
+  sig=k4d8...43-char-base64...&
+  artifact_name=run-final-screenshot.png&
+  artifact_type=screenshot_final
+```
+
+The signature is computed over a canonical string with newline separators:
+
+```
+GET
+/v1/artifacts/art_abc123/content
+1714579200
+2026-04-01-v1
+```
+
+That is: HTTP method, then path, then unix-seconds expiry, then key id. Including `kid` in the canonical string means a signature produced with one key cannot be replayed under a different key id — even if you accidentally publish two keys with overlapping ids in different keyrings.
+
+`artifact_name` and `artifact_type` are decorative query parameters for the receiver. They are not signed; modifying them does not invalidate the URL.
+
+## Expiry
+
+The default expiry is 12 hours, set as `ARTIFACT_URL_EXPIRY_SECONDS = 12 * 60 * 60`. You can override per-organization within fixed bounds:
+
+- Minimum: 1 hour (`ARTIFACT_URL_EXPIRY_SECONDS_MIN`).
+- Maximum: 7 days (`ARTIFACT_URL_EXPIRY_SECONDS_MAX`), matching the AWS S3 presigned-URL cap.
+
+Out-of-range stored values get clamped to the bounds by `effective_artifact_url_expiry_seconds`, so a stray DB row with `expiry=999999999` does not produce an unbounded URL.
+
+The verifier rejects expired URLs with a generic `400` so the response shape does not leak whether the artifact exists.
+
+## Key rotation
+
+Rotating a key is a three-step process:
+
+1. **Add the new key.** Update the JSON to include both keys, with the new `kid` set as `current_kid`:
+
+   ```json
+   {
+     "current_kid": "2026-05-01-v1",
+     "keys": {
+       "2026-04-01-v1": {"secret": "<old>", "created_at": "2026-04-01"},
+       "2026-05-01-v1": {"secret": "<new>", "created_at": "2026-05-01"}
+     }
+   }
+   ```
+
+   Skyvern signs new URLs with the new key immediately. Old URLs (that carry `kid=2026-04-01-v1`) keep validating because the old key is still in `keys`.
+
+2. **Wait out the old key's exposure window.** Old URLs are valid up to their per-URL expiry, capped at 12 hours by default. After the longest-lived URL signed with the old key has expired, the old key is no longer needed.
+
+3. **Remove the old key.** Drop the retired entry from `keys` to shrink the attack surface back to one secret.
+
+The `parse_keyring` cache keys on the JSON string, so updating the env var (and bouncing the process or otherwise causing the cache miss) is enough to pick up the new keyring.
+
+## Producing signed URLs
+
+The bundled artifact path automatically produces signed URLs when the keyring is configured. From a client's perspective, the URL just appears in the API response:
+
+```python
+artifact = await client.get_artifact("art_abc123")
+print(artifact.signed_url)
+# https://api.skyvern.com/v1/artifacts/art_abc123/content?expiry=...&kid=...&sig=...
+```
+
+If you need to mint URLs in a script (for example, to share an artifact through your own CDN), use `sign_artifact_url(base_url, artifact_id, keyring, ...)` from `skyvern.forge.sdk.artifact.signing` directly. It is the same helper the API uses.
+
+## Verifying URLs in your own service
+
+If you proxy artifact downloads through a service of your own, validate the signature there too. The verifier is short and uses constant-time equality:
+
+```python
+from skyvern.forge.sdk.artifact.signing import parse_keyring, verify_artifact_signature
+
+KEYRING = parse_keyring(os.environ["ARTIFACT_CONTENT_HMAC_KEYRING"])
+
+def is_valid(artifact_id: str, expiry: str, kid: str, sig: str) -> bool:
+    return verify_artifact_signature(
+        artifact_id=artifact_id,
+        expiry=expiry,
+        kid=kid,
+        sig=sig,
+        keyring=KEYRING,
+    )
+```
+
+The verifier returns `False` for any of: a non-integer expiry, an expired URL, a `kid` missing from the keyring, or a bad signature. It never tells the caller which one.
+
+## Common pitfalls
+
+- **Forgetting to keep the old key.** If you remove the retired key the same hour you rotate, every URL Skyvern minted with the old kid breaks. Wait out the longest TTL first.
+- **Sharing the secret in the URL.** The signature is in the URL; the secret is not, and never should be. Treat the keyring like a database password.
+- **Signing without rotating.** A single key indefinitely is fine, but rotate annually at minimum and any time you suspect leakage. The two-key rotation pattern is built precisely so you can rotate without breaking in-flight URLs.
+
+## Next steps
+
+- [Webhook signatures](./webhook-signatures) — the other place Skyvern uses HMAC.
+- [Configuration reference](/developers/self-hosted/configuration-reference) — `ARTIFACT_CONTENT_HMAC_KEYRING` and friends.
+- [Artifact API](/sdk-reference/tasks/get-artifact) — fetching artifacts via the SDK.

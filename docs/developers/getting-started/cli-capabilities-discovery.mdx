@@ -1,0 +1,114 @@
+---
+title: Discover the CLI from an agent
+description: Use skyvern capabilities to enumerate every CLI command at runtime, with progressive disclosure for context-sensitive AI agents.
+slug: developers/getting-started/cli-capabilities-discovery
+keywords:
+  - capabilities
+  - cli
+  - mcp
+  - agent
+  - discovery
+---
+
+`skyvern capabilities` walks the entire `skyvern` CLI tree and emits a structured description of every command, argument, and option. It is built for AI coding assistants (Claude Code, Cursor, Windsurf) that need to know what `skyvern` can do without reading the source, but it is also useful when you want a one-shot sanity check that a freshly-installed CLI is wired up correctly.
+
+The command lives at `skyvern/cli/commands/__init__.py:134`.
+
+## Quick examples
+
+```bash
+# Top-level commands plus immediate subcommands. ~2K tokens.
+skyvern capabilities
+
+# Just the workflow subtree.
+skyvern capabilities workflow
+
+# Top-level command names only. ~500 tokens — useful as a low-context preface.
+skyvern capabilities --depth 0
+
+# Everything, recursively. ~20K tokens.
+skyvern capabilities --depth 3
+
+# Human-readable instead of JSON.
+skyvern capabilities --no-json
+```
+
+The default depth is `1`: top-level commands and their immediate subcommands. That is enough for an agent to decide which subtree to drill into next.
+
+## Why progressive disclosure matters
+
+If you give an agent the full CLI tree on every turn, you spend a lot of context on commands the agent will never call. The four-step pattern that works for us:
+
+1. The agent starts with a tight system prompt that points at `skyvern capabilities --depth 0`. ~500 tokens to learn that `workflow`, `tasks`, `credential`, and friends exist.
+2. When the user asks something workflow-shaped, the agent runs `skyvern capabilities workflow`. ~1-2K tokens for the workflow subtree.
+3. When the user asks something narrower (run a specific schedule), the agent drills further: `skyvern capabilities workflow run`.
+4. Only when the agent is ready to invoke a command does it pay full token cost on the help text.
+
+The full tree (`--depth 3`) is rarely the right default. Reach for it when you want to dump everything into a single prompt for a one-shot generation.
+
+## Output shape
+
+The default JSON shape is recursive, with one node per command:
+
+```json
+{
+  "name": "skyvern",
+  "help": "Skyvern CLI",
+  "subcommands": [
+    {
+      "name": "workflow",
+      "help": "Manage Skyvern workflows.",
+      "subcommands": [
+        {
+          "name": "workflow run",
+          "help": "Run a workflow.",
+          "arguments": [{"name": "workflow_id", "required": true}],
+          "options": [
+            {
+              "name": "wait_for_completion",
+              "flags": ["--wait", "--no-wait"],
+              "required": false,
+              "help": "Block until the workflow finishes."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Three things to know about the shape:
+
+- `arguments` are positional, `options` are flags. Arguments include `required` and (when not the default `TEXT`) a `type`.
+- When the depth limit is hit on a group, Skyvern emits `subcommand_names` (a flat list of child names) instead of recursing further. That is your signal to call `capabilities <name>` for the subtree.
+- Hidden commands and the implicit `--help` flag are stripped out; agents do not see them.
+
+## Subcommand filter
+
+Pass a subcommand name as a positional argument to scope the walk:
+
+```bash
+skyvern capabilities credential --depth 2
+```
+
+This is the cheapest way to learn one subtree. The result is anchored at the named subcommand, and the recursion respects `--depth` from there.
+
+If the named subcommand does not exist, `capabilities` exits non-zero with a structured error and a hint to run `skyvern capabilities --depth 0`. Agents can match on the error to recover.
+
+## Pairing with the bundled skill
+
+Skyvern also ships with a Claude Code "skill" at `skyvern/cli/skills/skyvern/SKILL.md` that is auto-installed by `skyvern setup` for any AI client that supports skills. The skill teaches the model how to classify a user request and which CLI command to reach for. `capabilities` is the runtime back-stop: when the skill is unsure, it can verify which commands actually exist by calling `skyvern capabilities`.
+
+## When `capabilities` is the wrong tool
+
+Two cases:
+
+- **Generating code that calls Skyvern.** The CLI is for orchestration; the SDK is for embedding Skyvern in an app. Point the agent at `from skyvern import Skyvern` and the [SDK reference](/sdk-reference/overview).
+- **Listing live resources.** `capabilities` describes the CLI itself. To list your workflows, runs, or schedules, use the corresponding `skyvern workflow list`, `skyvern tasks list`, or REST endpoints.
+
+## Next steps
+
+- [MCP server](./mcp) — set up Skyvern's MCP server so an agent can call the CLI remotely.
+- [Run Skyvern from Claude Code](/cookbooks/run-skyvern-from-claude-code) — end-to-end agentic use case.
+- [SDK reference](/sdk-reference/overview) — the Python and TypeScript surface for in-app integration.

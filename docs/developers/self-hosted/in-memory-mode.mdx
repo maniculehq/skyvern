@@ -1,0 +1,90 @@
+---
+title: In-memory mode
+description: What works and what does not when running Skyvern.local(use_in_memory_db=True), with the exhaustive unsupported-feature list.
+slug: developers/self-hosted/in-memory-mode
+keywords:
+  - in-memory
+  - sqlite
+  - Skyvern.local
+  - embedded
+---
+
+`Skyvern.local(use_in_memory_db=True)` is the zero-config path: an embedded FastAPI app, an in-memory SQLite database, no external services, no `.env`. It is the right choice for unit tests, notebook experiments, and any script where you want a fresh Skyvern every time the process starts.
+
+This page is the exhaustive list of what is missing in this mode, why it is missing, and what to use instead. For the broader "when to use embedded mode at all" conversation, see [Embedded mode](/developers/getting-started/embedded-mode).
+
+## The constraint, in one sentence
+
+In-memory mode is exactly the standalone server, minus anything that needs a durable database, a shared cache, or a separate worker process.
+
+The auto-detection logic lives in `skyvern/library/skyvern.py:188-247`. With `use_in_memory_db=True`, Skyvern boots a SQLite engine in memory, runs the bootstrap migration that creates a local org and a local API key, and wires the in-process httpx client. With `use_in_memory_db=False`, the same factory checks for `DATABASE_STRING` and `SKYVERN_API_KEY`, refuses to start without them, and runs against your Postgres.
+
+## What works
+
+Everything below works identically to a full self-hosted server. From the SDK's perspective, you cannot tell the difference:
+
+- `run_task` with any engine (`skyvern_v1`, `skyvern_v2`, the three CUA engines).
+- `run_workflow`, including `run_with="code"` and AI fallback.
+- `extract`, `click`, `navigate`, `act` — the full `page` API.
+- Workflow CRUD: `create_workflow`, `update_workflow`, `get_workflow`, `delete_workflow`, `get_workflows`.
+- Folders.
+- Local artifact storage. Artifacts are written to a temp directory and exposed as `file://` URIs.
+- Any LLM provider supported by litellm. Set `OPENAI_API_KEY` (or whichever your `LLM_KEY` requires) in the environment.
+- The in-process FastAPI app, which means OpenAPI introspection at `/openapi.json` works the same way.
+
+## What does not work
+
+These features depend on infrastructure that in-memory mode intentionally does not start. The list comes straight from the docstring at `skyvern/library/skyvern.py:204-208`:
+
+### Workflow scheduling
+
+Schedules need a durable store and a separate worker that polls cron expressions. The in-memory SQLite vanishes when the process exits, so any persisted schedule would be useless.
+
+The schedule routes (`/v1/schedules`, `/v1/workflows/{wpid}/schedules`) return `501 Not Implemented` ("Workflow schedules are disabled in this Skyvern build") in this mode.
+
+**Workaround:** drive scheduling from outside Skyvern (a cron job, GitHub Actions, your application's scheduler) that calls `run_workflow` synchronously. Or move to persistent mode.
+
+### Cloud browser sessions
+
+Browser sessions intended for cross-process or cross-machine reuse rely on shared object storage (S3 or Azure Blob) for the serialized state. In-memory mode has no such storage configured.
+
+`POST /v1/browser_sessions` works, but the session is local to the process and disappears when the process exits. `connect_to_cloud_browser_session` requires Skyvern Cloud and will raise.
+
+**Workaround:** use `launch_local_browser` or `connect_to_browser_over_cdp` to attach to a Playwright context you control, and let your own code manage the lifetime.
+
+### Rate limiting
+
+`app.RATE_LIMITER.rate_limit_submit_run` is backed by Redis in cloud mode. In-memory mode has no Redis and the rate limiter is a no-op.
+
+This is rarely a problem locally — you are the only caller. It only matters if you are stress-testing a workflow and want to confirm it handles `429` responses; for that, point at a Postgres + Redis self-hosted instance instead.
+
+### Multi-worker and multi-process execution
+
+Task v2's swarm engine and certain workflow blocks rely on Temporal for distributed execution. In-memory mode runs everything in one process, so v2 sub-tasks run sequentially and any block that publishes to a Temporal queue waits forever.
+
+In practice, `run_task(engine="skyvern-2.0")` in in-memory mode still works for short flows (the swarm collapses to a single agent), but degrades on long flows that v2 would normally fan out.
+
+**Workaround:** use `engine="skyvern-1.0"` for embedded mode, or move to persistent mode if you need v2's parallelism.
+
+## What changes with `use_in_memory_db=False`
+
+Persistent mode (in-process FastAPI + Postgres) lifts two of the four restrictions:
+
+- Workflow scheduling works if you also stand up the scheduling backend (cloud-only at the moment).
+- Rate limiting works if you also configure Redis.
+
+Cloud browser sessions and multi-worker execution still require Skyvern Cloud or a full self-hosted deployment with all the services running. Persistent embedded mode is "the same FastAPI server you'd run with `skyvern run server`, just hosted in your Python process," which means it inherits the full server's capabilities and limitations.
+
+## Quick decision
+
+- "I am writing tests." → `use_in_memory_db=True`.
+- "I am building a CLI tool that runs short tasks." → `use_in_memory_db=True`.
+- "I want my run history to survive restarts." → `use_in_memory_db=False` with Postgres.
+- "I need scheduled workflows." → Skyvern Cloud, or `skyvern run server` with the cloud extras installed.
+- "I need cloud browser sessions." → Skyvern Cloud.
+
+## Next steps
+
+- [Embedded mode](/developers/getting-started/embedded-mode) — the broader Skyvern.local() guide.
+- [Configuration reference](./configuration-reference) — the settings to pass via `settings={...}`.
+- [Self-hosted overview](./overview) — when to graduate from embedded to a standalone server.

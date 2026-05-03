@@ -1,0 +1,89 @@
+---
+title: "schedules_delete"
+description: "Permanently delete a workflow schedule and remove it from the scheduling backend."
+slug: sdk-reference/workflow-schedules/delete-schedule
+---
+
+Delete is final: the schedule row is soft-deleted in the database and the underlying scheduling backend is asked to remove it. The schedule will not fire again, and it will stop counting against the per-workflow schedule limit, freeing up a slot for [`schedules_create`](./create-schedule).
+
+If the backend deletion fails after Skyvern soft-deletes the DB row, Skyvern restores the row so the two stay in sync. In that case the API returns `502` and you should retry.
+
+<Warning>
+The endpoint is destructive and not idempotent. Calling it twice on the same id returns `404` on the second call. If you only want to stop the schedule from firing while keeping it in the dashboard, call [`schedules_disable`](./disable-schedule) instead.
+</Warning>
+
+<CodeGroup>
+```python Python
+resp = await client.schedules_delete(
+    workflow_permanent_id="wpid_invoices",
+    workflow_schedule_id="ws_abc123",
+)
+assert resp.ok is True
+```
+
+```typescript TypeScript
+const resp = await skyvern.schedulesDelete("wpid_invoices", "ws_abc123");
+console.assert(resp.ok === true);
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `workflow_permanent_id` | `str` | Yes | The workflow's permanent id. |
+| `workflow_schedule_id` | `str` | Yes | The schedule id (`ws_...`). |
+| `request_options` | `RequestOptions` | No | Per-request configuration (see below). |
+
+### Returns `DeleteScheduleResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | `bool` | `true` when the schedule has been removed from both the database and the scheduling backend. |
+
+### Errors
+
+- `404 Not Found` — schedule does not exist (already deleted) or does not belong to the workflow in the path.
+- `501 Not Implemented` — scheduling is disabled in this build.
+- `502 Bad Gateway` — backend deletion failed. The DB row has been restored; safe to retry.
+
+### Related
+
+- [`schedules_disable`](./disable-schedule) — pause without removing.
+- [`schedules_list`](./list-schedules-for-workflow) — confirm the schedule is gone.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

@@ -1,0 +1,93 @@
+---
+title: "delete_folder"
+description: "Delete a folder, optionally cascading to the workflows inside."
+slug: sdk-reference/folders/delete-folder
+---
+
+By default, deleting a folder unlinks its workflows but keeps them. Pass `delete_workflows=true` to soft-delete every workflow inside the same call. The folder itself is always soft-deleted, so the id stays unique forever.
+
+<Warning>
+`delete_workflows=true` is destructive. Each workflow's runs, schedules, scripts, and parameters become inaccessible. Confirm you have an export or copy before passing this flag at scale.
+</Warning>
+
+<CodeGroup>
+```python Python
+# Unlink workflows (default), then delete the folder.
+result = await client.delete_folder("fld_abc123")
+print(result["status"])  # "deleted"
+
+# Or delete the folder *and* every workflow inside.
+result = await client.delete_folder("fld_abc123", delete_workflows=True)
+```
+
+```typescript TypeScript
+const result = await skyvern.deleteFolder("fld_abc123");
+console.log(result.status); // "deleted"
+
+// Or cascade:
+await skyvern.deleteFolder("fld_abc123", { deleteWorkflows: true });
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `folder_id` | `str` | Yes | - | The folder id (`fld_...`). |
+| `delete_workflows` | `bool` | No | `False` | If `true`, soft-delete every workflow currently in the folder. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+### Returns `dict`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `str` | `"deleted"` on success. |
+| `folder_id` | `str` | Echo of the deleted id. |
+| `workflows_deleted` | `bool` | Mirrors the `delete_workflows` query argument. |
+
+When `delete_workflows=false`, the workflows that were inside the folder remain (with `folder_id = None` after the unlink).
+
+### Errors
+
+- `404 Not Found` — folder id does not exist (already deleted) or belongs to a different org.
+
+### Related
+
+- [`update_folder`](./update-folder) — rename instead of removing.
+- [`update_workflow_folder`](/sdk-reference/workflows/update-workflow-folder) — move a single workflow to a different folder.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

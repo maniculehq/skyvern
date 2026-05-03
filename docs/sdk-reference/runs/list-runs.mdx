@@ -1,0 +1,141 @@
+---
+title: "get_runs_v2"
+description: "List the most recent task and workflow runs for the organization, with status and search-key filters."
+slug: sdk-reference/runs/list-runs
+---
+
+This is the unified run-history endpoint. It returns the most recent task v1, task v2, and workflow runs side-by-side, drawn from the `task_runs` table. For a single run, use [`get_run`](/sdk-reference/tasks/get-run); for the older v1-only listing, see [`get_runs`](/sdk-reference/tasks/get-runs-v2).
+
+<Note>
+The v2 listing endpoint replaces an earlier `GET /api/v1/runs` that returned `WorkflowRun | Task`. The two endpoints share a path on the modern surface — Skyvern routes by router. Use `get_runs_v2` (this one) on `/v1`; the older endpoint is still available on `/api/v1` for back-compat.
+</Note>
+
+<CodeGroup>
+```python Python
+runs = await client.get_runs_v2(
+    page=1,
+    page_size=50,
+    status=[RunStatus.completed, RunStatus.failed],
+)
+for r in runs:
+    print(r.run_id, r.task_run_type, r.status)
+```
+
+```typescript TypeScript
+const runs = await skyvern.getRunsV2({
+  page: 1,
+  pageSize: 50,
+  status: ["completed", "failed"],
+});
+for (const r of runs) {
+  console.log(r.run_id, r.task_run_type, r.status);
+}
+```
+</CodeGroup>
+
+The result is a flat list of lightweight rows. Use `get_run(run_id)` to fetch the full record for any row that interests you.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `page` | `int` | No | `1` | 1-indexed page. Capped at `100`. |
+| `page_size` | `int` | No | `10` | Items per page, max `100`. |
+| `status` | `list[RunStatus]` | No | `None` | Filter to one or more statuses. Combine multiple values to OR them together. |
+| `search_key` | `str` | No | `None` | Case-insensitive substring search. Minimum 3 characters (the table has a trigram index for this). Matches across run id, parameter values, and extra HTTP headers. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+### Returns `list[TaskRunListItem]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_run_id` | `str` | Internal task-runs row id. |
+| `run_id` | `str` | The user-facing run id. Starts with `tsk_`, `tsk_v2_`, or `wr_` depending on the run type. |
+| `task_run_type` | `str` | `"task_v1"`, `"task_v2"`, `"workflow_run"`, `"openai_cua"`, `"anthropic_cua"`, or `"ui_tars"`. |
+| `status` | `str` | One of the values in `RunStatus`. |
+| `title` | `str \| None` | Display title shown in the dashboard. |
+| `started_at` | `datetime \| None` | When the run actually began. `None` while the run is queued. |
+| `finished_at` | `datetime \| None` | When the run reached a terminal status. |
+| `created_at` | `datetime` | When the run was created. |
+| `workflow_permanent_id` | `str \| None` | The parent workflow id for `workflow_run` rows. |
+| `script_run` | `bool` | `True` when the run executed cached Playwright code (with or without AI fallback). |
+
+### Example: paginate to find a recent failure
+
+<CodeGroup>
+```python Python
+async def find_recent_failure() -> str | None:
+    page = 1
+    while page <= 10:  # the endpoint caps at page 100
+        rows = await client.get_runs_v2(
+            page=page,
+            page_size=100,
+            status=[RunStatus.failed],
+        )
+        if not rows:
+            return None
+        return rows[0].run_id
+    return None
+```
+
+```typescript TypeScript
+async function findRecentFailure(): Promise<string | null> {
+  for (let page = 1; page <= 10; page++) {
+    const rows = await skyvern.getRunsV2({
+      page,
+      pageSize: 100,
+      status: ["failed"],
+    });
+    if (rows.length === 0) return null;
+    return rows[0].run_id;
+  }
+  return null;
+}
+```
+</CodeGroup>
+
+### Errors
+
+- `400 Bad Request` — `search_key` is shorter than 3 characters.
+
+### Related
+
+- [`get_run`](/sdk-reference/tasks/get-run) — fetch one run by id.
+- [`get_run_timeline`](/sdk-reference/tasks/get-run-timeline) — step-by-step actions for any run.
+- [`cancel_run`](/sdk-reference/tasks/cancel-run) — terminate a running run.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

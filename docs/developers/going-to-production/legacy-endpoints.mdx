@@ -1,0 +1,101 @@
+---
+title: Legacy endpoints
+description: A migration map from the older /api/v1 and /api/v2 surfaces to the modern /v1 API.
+slug: developers/going-to-production/legacy-endpoints
+keywords:
+  - legacy
+  - api/v1
+  - api/v2
+  - migration
+---
+
+Skyvern's modern public API lives under `/v1`. Two older prefixes still work: `/api/v1` (a near-mirror of the modern surface, kept for clients that hard-coded the old path) and `/api/v2` (a small, task-v2-specific surface from before the swarm engine was unified into `/v1`). Both legacy mounts have `include_in_schema=False`, so they do not appear in the API Reference tab or in the OpenAPI document, and they will not be discoverable from the playground.
+
+This page exists so you have somewhere to look up what the legacy paths do when you find them in production logs.
+
+## How the mounts are wired
+
+Three routers are mounted on the FastAPI app (`skyvern/forge/api_app.py`):
+
+- `base_router` → `/v1` — the documented modern surface.
+- `legacy_base_router` → `/api/v1` — back-compat aliases. Same handlers, same response shapes; the routes are decorated twice (once on each router) so the legacy paths share an implementation with the modern ones.
+- `legacy_v2_router` → `/api/v2` — task v2's original prefix.
+
+All three routers are declared in `skyvern/forge/sdk/routes/routers.py:1-5` and the legacy ones are constructed with `include_in_schema=False`.
+
+## When to migrate
+
+You should migrate any client that calls `/api/v1` or `/api/v2` for two reasons:
+
+1. **Discoverability.** New endpoints (folders, schedules, scripts, signed artifact URLs) only ship on `/v1`. The legacy router gets back-compat aliases for old endpoints, never new ones.
+2. **Documentation.** The Mintlify API Reference is generated from the OpenAPI spec, which only includes `/v1`. If you stay on `/api/v1`, you have to read source to know what the endpoint accepts.
+
+The migration is usually a single substitution: replace the prefix and re-test. Bodies and response shapes are unchanged.
+
+## What lives where
+
+### Tasks and runs
+
+| Legacy | Modern | Notes |
+|---|---|---|
+| `POST /api/v1/tasks` | `POST /v1/run/tasks` (with `engine="skyvern-1.0"`) | Modern endpoint takes a `RunEngine` enum and returns a unified `TaskRunResponse`. |
+| `POST /api/v1/tasks/{task_id}/cancel` | `POST /v1/runs/{run_id}/cancel` | The modern path is engine-agnostic. |
+| `GET /api/v1/tasks/{task_id}` | `GET /v1/runs/{run_id}` | Same. |
+| `GET /api/v1/tasks/{task_id}/steps` | `GET /v1/runs/{run_id}/timeline` | Timeline subsumes the older steps view and works for v1, v2, and CUA runs. |
+| `GET /api/v1/runs` | `GET /v1/runs` | The modern endpoint returns `TaskRunListItem`, the legacy returns `WorkflowRun \| Task`. |
+| `POST /api/v2/tasks` | `POST /v1/run/tasks` (with `engine="skyvern-2.0"`) | The v2 prefix predates the unified engine dispatch. |
+
+### Workflows and runs
+
+| Legacy | Modern |
+|---|---|
+| `POST /api/v1/workflows` | `POST /v1/workflows` |
+| `POST /api/v1/workflows/{wpid}` | `POST /v1/workflows/{wpid}` |
+| `POST /api/v1/workflows/runs` | `POST /v1/run/workflows` |
+| `POST /api/v1/workflows/runs/{id}/cancel` | `POST /v1/runs/{run_id}/cancel` |
+| `POST /api/v1/workflows/runs/{id}/retry_webhook` | `POST /v1/runs/{run_id}/retry_webhook` |
+
+### Webhooks, heartbeat, version, models
+
+| Legacy | Modern |
+|---|---|
+| `POST /api/v1/webhook` | `POST /v1/webhook` |
+| `GET /api/v1/heartbeat` | `GET /v1/heartbeat` |
+| `GET /api/v1/version` | `GET /v1/version` |
+| `GET /api/v1/models` | `GET /v1/models` |
+
+### Credentials
+
+The `credentials` route file mounts each handler twice and exposes a legacy alias under `/api/v1/credentials/...`. The credential CRUD shape is identical on both prefixes:
+
+| Legacy | Modern |
+|---|---|
+| `POST /api/v1/totp` | `POST /v1/totp` |
+| `POST /api/v1/credentials` | `POST /v1/credentials` |
+| `GET /api/v1/credentials` | `GET /v1/credentials` |
+| `GET /api/v1/credentials/{id}` | `GET /v1/credentials/{id}` |
+| `POST /api/v1/credentials/{id}` | `POST /v1/credentials/{id}` |
+| `POST /api/v1/credentials/{id}/delete` | `POST /v1/credentials/{id}/delete` |
+
+### Endpoints that are modern-only
+
+These ship only under `/v1`:
+
+- Folder CRUD (`/v1/folders`, `/v1/folders/{id}`).
+- Workflow schedules (`/v1/schedules`, `/v1/workflows/{wpid}/schedules`).
+- Scripts (`/v1/scripts`, `/v1/scripts/{id}/deploy`, `/v1/scripts/{id}/run`).
+- Signed artifact content URLs (`/v1/artifacts/{id}/content`).
+- Browser profiles (`/v1/browser_profiles`).
+- Browser sessions (`/v1/browser_sessions`).
+- Workflow folders (`/v1/workflows/{wpid}/folder`).
+
+If you find yourself wanting to call any of these from `/api/v1`, the answer is to migrate the rest of the client first.
+
+## Documentation redirects
+
+The `docs.json` redirects map covers the doc-page URLs that moved during reorganization, not the API paths. If a search engine drops you on `/integrations/mcp-server` or `/getting-started/skyvern-in-action`, the redirect rules send you to the current home (`docs/docs.json:415-863`). Stale API paths in your code do not get rewritten by the docs site; you have to change the call.
+
+## Next steps
+
+- [Webhook signatures](./webhook-signatures) — verify webhook callbacks once you are on `/v1/webhook`.
+- [Run engines](/developers/features/run-engines) — pick `skyvern-1.0` or `skyvern-2.0` on the modern `/v1/run/tasks` endpoint.

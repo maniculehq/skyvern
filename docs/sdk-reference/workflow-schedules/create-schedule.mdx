@@ -1,0 +1,139 @@
+---
+title: "schedules_create"
+description: "Create a cron schedule that fires a workflow on a recurring cadence."
+slug: sdk-reference/workflow-schedules/create-schedule
+---
+
+Attach a schedule to a workflow so Skyvern fires it automatically on the cadence you set. The body is small (cron, timezone, optional parameter overrides), but the server runs four checks before persisting: the cron expression must parse, the timezone must be a valid IANA name, every parameter must match the workflow's parameter schema, and the workflow must not already be at its per-workflow schedule limit.
+
+<Note>
+Scheduling requires Skyvern Cloud or a self-hosted build with a scheduling backend. Disabled builds return `501 Not Implemented`.
+</Note>
+
+<CodeGroup>
+```python Python
+resp = await client.schedules_create(
+    workflow_permanent_id="wpid_invoices",
+    cron_expression="0 9 * * MON",
+    timezone="America/New_York",
+    name="Weekly Monday morning run",
+    parameters={"region": "US-East"},
+    enabled=True,
+)
+print(resp.schedule.workflow_schedule_id, resp.next_runs[:3])
+```
+
+```typescript TypeScript
+const resp = await skyvern.schedulesCreate("wpid_invoices", {
+  cron_expression: "0 9 * * MON",
+  timezone: "America/New_York",
+  name: "Weekly Monday morning run",
+  parameters: { region: "US-East" },
+  enabled: true,
+});
+console.log(resp.schedule.workflow_schedule_id, resp.next_runs.slice(0, 3));
+```
+</CodeGroup>
+
+The response carries the persisted schedule plus the next five fire times computed from the cron expression. Use `next_runs[0]` to confirm the schedule starts when you expect.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `workflow_permanent_id` | `str` | Yes | - | Path. The workflow's permanent id (`wpid_...`). |
+| `cron_expression` | `str` | Yes | - | Standard 5-field cron expression. Validated server-side; `400` on parse failure. |
+| `timezone` | `str` | Yes | - | IANA timezone (e.g. `America/New_York`, `UTC`, `Europe/Berlin`). |
+| `enabled` | `bool` | No | `True` | Start the schedule active. Set to `False` to create paused. |
+| `parameters` | `dict[str, Any] \| None` | No | `None` | Overrides for the workflow's typed parameters. Keys must match defined parameter names; `None` values fall through to defaults at fire time. |
+| `name` | `str \| None` | No | auto | Human-readable label. If omitted, Skyvern generates `"<workflow title> - Schedule #N"`. |
+| `description` | `str \| None` | No | `None` | Free-form notes for the dashboard. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+The `parameters` body is checked against the workflow's parameter schema by `workflow_service.validate_schedule_parameters`. Sending an unknown key, a wrong type, or omitting a required parameter yields `400 Bad Request` with a parameter-specific message.
+
+### Returns `WorkflowScheduleResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schedule` | `WorkflowSchedule` | The persisted schedule, including `workflow_schedule_id`, `temporal_schedule_id`, and `created_at`. |
+| `next_runs` | `list[datetime]` | Up to five upcoming fire times in the schedule's timezone. |
+
+### Example: paused-on-create, enable later
+
+Create the schedule with `enabled=False` while you double-check parameters in the dashboard, then call [`schedules_enable`](./enable-schedule) when you are ready.
+
+<CodeGroup>
+```python Python
+draft = await client.schedules_create(
+    workflow_permanent_id="wpid_invoices",
+    cron_expression="0 9 * * MON",
+    timezone="UTC",
+    enabled=False,
+)
+# ...inspect, edit parameters, then go live
+await client.schedules_enable(
+    workflow_permanent_id="wpid_invoices",
+    workflow_schedule_id=draft.schedule.workflow_schedule_id,
+)
+```
+
+```typescript TypeScript
+const draft = await skyvern.schedulesCreate("wpid_invoices", {
+  cron_expression: "0 9 * * MON",
+  timezone: "UTC",
+  enabled: false,
+});
+await skyvern.schedulesEnable("wpid_invoices", draft.schedule.workflow_schedule_id);
+```
+</CodeGroup>
+
+### Errors
+
+- `400 Bad Request` — invalid cron expression or timezone, or parameter validation failed.
+- `404 Not Found` — workflow id does not exist or does not belong to the org.
+- `409 Conflict` — `Maximum of N schedules per workflow reached`. Delete a schedule before adding another.
+- `501 Not Implemented` — scheduling is disabled in this build.
+- `502 Bad Gateway` — `Failed to sync schedule with scheduling service`. The DB record is rolled back automatically; safe to retry.
+
+### Related
+
+- [`schedules_update`](./update-schedule) — change cron, timezone, or parameters.
+- [`schedules_delete`](./delete-schedule) — remove a schedule.
+- [Workflow scheduling](/cloud/building-workflows/scheduling) — concept overview.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

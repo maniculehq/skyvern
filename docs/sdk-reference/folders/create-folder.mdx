@@ -1,0 +1,94 @@
+---
+title: "create_folder"
+description: "Create a folder for grouping workflows in the dashboard."
+slug: sdk-reference/folders/create-folder
+---
+
+Folders are a thin organization layer. They have a title, an optional description, and a workflow count. Workflows are assigned to a folder via [`update_workflow_folder`](/sdk-reference/workflows/update-workflow-folder); creating the folder itself does nothing to existing workflows.
+
+<CodeGroup>
+```python Python
+folder = await client.create_folder(
+    title="Invoice automations",
+    description="Monthly billing flows for 2026.",
+)
+print(folder.folder_id)
+```
+
+```typescript TypeScript
+const folder = await skyvern.createFolder({
+  title: "Invoice automations",
+  description: "Monthly billing flows for 2026.",
+});
+console.log(folder.folder_id);
+```
+</CodeGroup>
+
+The response includes a fresh `folder_id` (prefixed `fld_`) and a `workflow_count` of `0`. Hold onto the id so you can pass it to `update_workflow_folder` when assigning workflows.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `title` | `str` | Yes | - | Folder title. 1-255 characters. |
+| `description` | `str \| None` | No | `None` | Free-form description shown in the dashboard. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+### Returns `Folder`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `folder_id` | `str` | Permanent id. Starts with `fld_`. |
+| `organization_id` | `str` | Owning organization. |
+| `title` | `str` | Echo of the requested title. |
+| `description` | `str \| None` | Echo of the requested description. |
+| `workflow_count` | `int` | Always `0` on create. |
+| `created_at` | `datetime` | Creation timestamp. |
+| `modified_at` | `datetime` | Same as `created_at` on create. |
+
+### Errors
+
+- `400 Bad Request` — title is missing or longer than 255 characters.
+
+### Related
+
+- [`update_workflow_folder`](/sdk-reference/workflows/update-workflow-folder) — assign or move a workflow.
+- [`get_folders`](./list-folders) — list all folders.
+- [`update_folder`](./update-folder) — rename or relocate.
+- [`delete_folder`](./delete-folder) — remove a folder.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

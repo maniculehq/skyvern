@@ -1,0 +1,131 @@
+---
+title: "schedules_list_all"
+description: "List every workflow schedule across the organization with paging, status filter, and free-text search."
+slug: sdk-reference/workflow-schedules/list-all-schedules
+---
+
+Use this endpoint when you need a single, paginated view of every schedule in the org. The paired per-workflow endpoint (`schedules_list`) returns schedules for one workflow only, so build dashboards and bulk audits on top of the org-wide list.
+
+<Note>
+Workflow scheduling is a Skyvern Cloud feature. On self-hosted builds without a scheduling backend, the API returns `501 Not Implemented` ("Workflow schedules are disabled in this Skyvern build"). See [Embedded mode](/developers/getting-started/embedded-mode) for the constraints.
+</Note>
+
+<CodeGroup>
+```python Python
+schedules = await client.schedules_list_all(
+    page=1,
+    page_size=20,
+    status="active",
+)
+for item in schedules.schedules:
+    print(item.workflow_title, item.cron_expression, item.next_run)
+```
+
+```typescript TypeScript
+const schedules = await skyvern.schedulesListAll({
+  page: 1,
+  pageSize: 20,
+  status: "active",
+});
+for (const item of schedules.schedules) {
+  console.log(item.workflow_title, item.cron_expression, item.next_run);
+}
+```
+</CodeGroup>
+
+The response merges the workflow title with each schedule, so a UI can render rows without a follow-up call to `get_workflow`.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `page` | `int` | No | `1` | 1-indexed page number. |
+| `page_size` | `int` | No | `10` | Items per page, max `100`. |
+| `status` | `"active" \| "paused"` | No | `None` | Filter by enabled state. `active` is enabled, `paused` is disabled. Omit to return both. |
+| `search` | `str` | No | `None` | Case-insensitive substring match against workflow title and schedule name. |
+| `request_options` | `RequestOptions` | No | - | Per-request configuration (see below). |
+
+### Returns `OrganizationScheduleListResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schedules` | `list[OrganizationScheduleItem]` | The page of schedules. |
+| `total_count` | `int` | Total schedules matching filters across all pages. |
+| `page` | `int` | Echo of the requested page. |
+| `page_size` | `int` | Echo of the requested page size. |
+
+Each `OrganizationScheduleItem` carries the cron expression, timezone, enabled flag, the workflow title (joined server-side), the human-readable `name`/`description`, and `next_run` (the next scheduled fire time, computed from the cron expression).
+
+The list view intentionally omits `backend_schedule_id`. To inspect or manage the binding to the underlying scheduling backend, fetch the schedule with [`schedules_get`](./get-schedule).
+
+### Example: paginate through every schedule
+
+<CodeGroup>
+```python Python
+page = 1
+all_schedules = []
+while True:
+    resp = await client.schedules_list_all(page=page, page_size=100)
+    all_schedules.extend(resp.schedules)
+    if page * resp.page_size >= resp.total_count:
+        break
+    page += 1
+```
+
+```typescript TypeScript
+let page = 1;
+const all = [];
+while (true) {
+  const resp = await skyvern.schedulesListAll({ page, pageSize: 100 });
+  all.push(...resp.schedules);
+  if (page * resp.page_size >= resp.total_count) break;
+  page += 1;
+}
+```
+</CodeGroup>
+
+### Errors
+
+- `501 Not Implemented` — `Workflow schedules are disabled in this Skyvern build.` Run on Skyvern Cloud or override `AgentFunction` with a scheduling backend.
+
+### Related
+
+- [`schedules_list`](./list-schedules-for-workflow) — schedules for one workflow.
+- [`schedules_create`](./create-schedule) — add a new schedule.
+- [Scheduling concept](/cloud/building-workflows/scheduling) — what a schedule does and how it fires.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |

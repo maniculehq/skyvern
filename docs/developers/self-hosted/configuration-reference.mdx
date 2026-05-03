@@ -1,0 +1,224 @@
+---
+title: Configuration reference
+description: Every environment variable a self-hosted Skyvern server reads, with defaults and the subsystems they affect.
+slug: developers/self-hosted/configuration-reference
+keywords:
+  - settings
+  - env
+  - configuration
+  - DATABASE_STRING
+  - LLM_KEY
+---
+
+Skyvern reads its configuration from a single `Settings` class (`skyvern/config.py`). Every field on that class can be overridden by an environment variable of the same name, an entry in the resolved `.env` file, or a key in the `settings={...}` argument to `Skyvern.local()`. This page is the lookup table: what the field does, what the default is, and which subsystems care about it.
+
+The full list is long — about 230 fields. The tables below group them by subsystem so you can skim the section that matches what you are trying to configure.
+
+<Warning>
+Several defaults are placeholder strings that must be replaced before going to production: `SECRET_KEY="PLACEHOLDER"`, `SKYVERN_API_KEY="PLACEHOLDER"`, `ENCRYPTOR_AES_SECRET_KEY="fillmein"`. Skyvern boots with these values, but anything they protect (JWT signing, API auth, credential encryption) is insecure until you set real ones.
+</Warning>
+
+## Where settings come from
+
+The `Settings` constructor resolves values in this order, with later sources winning:
+
+1. Field defaults declared in `skyvern/config.py`.
+2. The resolved backend `.env` file (typically `~/.skyvern/.env`, see `skyvern/utils/env_paths.py`).
+3. Process environment variables.
+4. The `settings={...}` keyword argument to `Skyvern.local()`, when used.
+
+Two helpers expose derived state: `Settings.is_sqlite()` returns `True` when `DATABASE_STRING` starts with `sqlite`, and `Settings.is_cloud_environment()` returns `True` when `ENV != "local"` (which forces `EXECUTE_ALL_STEPS=True` regardless of the field value).
+
+On Windows, `model_post_init` rewrites a `postgresql+psycopg://` URL to `postgresql+asyncpg://` because asyncpg is compatible with the Proactor event loop policy and psycopg is not. You do not need to do this rewrite manually.
+
+## Core process and HTTP
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENV` | `local` | `local`, `production`, or `staging`. Drives `is_cloud_environment()` and gates several behaviors. |
+| `PORT` | `8000` | Port for `skyvern run server`. |
+| `ALLOWED_ORIGINS` | `["*"]` | CORS origins. |
+| `BLOCKED_HOSTS` | `["localhost"]` | Hosts Skyvern refuses to navigate to. |
+| `ALLOWED_HOSTS` | `[]` | If non-empty, only these hosts are reachable. |
+| `LOG_LEVEL` | `INFO` | Standard Python log level. |
+| `JSON_LOGGING` | `False` | Switch structlog to JSON output. |
+| `LOG_RAW_API_REQUESTS` | `True` | Persist raw API request bodies (useful for debugging). |
+
+## Database
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_STRING` | factory | SQLAlchemy URL. Falls back to `sqlite+aiosqlite:///~/.skyvern/data.db` when unset. |
+| `DATABASE_REPLICA_STRING` | `None` | Optional read-replica URL. |
+| `DATABASE_POOL_SIZE` | `5` | Connection pool size. |
+| `DATABASE_POOL_MAX_OVERFLOW` | `10` | Burst connections above the pool size. |
+| `DISABLE_CONNECTION_POOL` | `False` | Disable pooling (one connection per request). |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `60000` | SQL statement timeout. |
+
+## Browser
+
+| Variable | Default | Description |
+|---|---|---|
+| `BROWSER_TYPE` | `chromium-headful` | One of `chromium-headful`, `chromium-headless`, `cdp-connect`. |
+| `BROWSER_REMOTE_DEBUGGING_URL` | `http://127.0.0.1:9222` | CDP target when `BROWSER_TYPE=cdp-connect`. |
+| `CHROME_EXECUTABLE_PATH` | `None` | Override the bundled chromium binary. |
+| `BROWSER_WIDTH` / `BROWSER_HEIGHT` | `1920` / `1080` | Viewport size. |
+| `BROWSER_LOCALE` | `None` | e.g. `en-US`. |
+| `BROWSER_TIMEZONE` | `America/New_York` | Browser timezone. |
+| `BROWSER_MAX_PAGES_NUMBER` | `10` | Hard cap on tabs per session. |
+| `BROWSER_ADDITIONAL_ARGS` | `[]` | Extra args passed to chromium. |
+| `BROWSER_LOGS_ENABLED` | `True` | Capture browser console logs as artifacts. |
+| `BROWSER_CURSOR_VISUALIZATION` | `False` | Render the agent's cursor on screenshots. |
+| `BROWSER_LOADING_TIMEOUT_MS` | `60000` | Page-load timeout. |
+| `BROWSER_SCREENSHOT_TIMEOUT_MS` | `20000` | Screenshot timeout. |
+| `BROWSER_ACTION_TIMEOUT_MS` | `5000` | Click / fill / select timeout. |
+| `EXTENSIONS_BASE_PATH` | `./extensions` | Where Skyvern looks for chrome extensions. |
+| `EXTENSIONS` | `[]` | Names of extensions under `EXTENSIONS_BASE_PATH` to load. |
+| `BROWSER_SESSION_BASE_PATH` | `<repo>/browser_sessions` | Local path for persisted browser sessions. |
+| `DEFAULT_BROWSER_PROFILE_DIR` | `""` | Pre-built profile directory. |
+
+## Run limits
+
+| Variable | Default | Description |
+|---|---|---|
+| `MAX_STEPS_PER_RUN` | `10` | Cap for task v1. |
+| `MAX_STEPS_PER_TASK_V2` | `25` | Cap for task v2 (per sub-task). |
+| `MAX_ITERATIONS_PER_TASK_V2` | `10` | Outer-loop iterations for task v2. |
+| `MAX_NUM_SCREENSHOTS` | `10` | Max screenshots saved per step. |
+| `MAX_RETRIES_PER_STEP` | `5` | Retries for a single action. |
+| `LONG_RUNNING_TASK_WARNING_RATIO` | `0.95` | When to warn about runaway runs. |
+
+## LLM router
+
+The model registry resolves a friendly model name to an internal `LLMConfigRegistry` key via `Settings.get_model_name_to_llm_key()`. The precedence rules are: Vertex AI wins over direct Gemini, Azure wins over direct OpenAI, and Bedrock wins over direct Anthropic, but only when the corresponding `ENABLE_*` flag is set.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_KEY` | `OPENAI_GPT5_5` | Active LLM. |
+| `LLM_API_KEY` | `None` | API key for the active model (when not set per-provider). |
+| `SECONDARY_LLM_KEY` | `None` | Lightweight model for cheap calls (planning, classification). |
+| `EXTRACTION_LLM_KEY` | `None` | Override for extraction blocks. |
+| `SCRIPT_GENERATION_LLM_KEY` | `None` | Override for the script generator. |
+| `SCRIPT_REVIEWER_LLM_KEY` | `None` | Override for the script reviewer. |
+| `LLM_CONFIG_TIMEOUT` | `300` | LLM call timeout in seconds. |
+| `LLM_CONFIG_MAX_TOKENS` | `4096` | Max tokens for a single completion. |
+| `LLM_CONFIG_TEMPERATURE` | `0` | Sampling temperature. |
+| `LLM_CONFIG_SUPPORT_VISION` | `True` | Whether the active model accepts images. |
+
+Provider feature flags (set the `ENABLE_*` flag and the matching API key):
+
+`ENABLE_OPENAI`, `ENABLE_ANTHROPIC`, `ENABLE_BEDROCK`, `ENABLE_BEDROCK_ANTHROPIC`, `ENABLE_AZURE`, `ENABLE_AZURE_GPT4O_MINI`, `ENABLE_AZURE_O3_MINI`, `ENABLE_AZURE_CUA`, `ENABLE_GEMINI`, `ENABLE_VERTEX_AI`, `ENABLE_OPENAI_COMPATIBLE`. Provider-specific API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, plus the standard AWS / Azure / Vertex auth env vars.
+
+## Storage
+
+| Variable | Default | Description |
+|---|---|---|
+| `SKYVERN_STORAGE_TYPE` | `local` | `local`, `s3cloud`, or `azureblob`. |
+| `ARTIFACT_STORAGE_PATH` | `~/.skyvern/artifacts` | Local artifact directory when storage is `local`. |
+| `MAX_UPLOAD_FILE_SIZE` | `10 MB` | Hard cap on uploads. |
+| `MAX_HTTP_DOWNLOAD_FILE_SIZE` | `500 MB` | Hard cap on browser downloads. |
+| `PRESIGNED_URL_EXPIRATION` | `24h` | Lifetime of presigned URLs. |
+| `AWS_REGION` | `us-east-1` | AWS region for S3 access. |
+| `AWS_S3_BUCKET_ARTIFACTS` | `skyvern-artifacts` | S3 bucket for artifacts. |
+| `AWS_S3_BUCKET_SCREENSHOTS` | `skyvern-screenshots` | S3 bucket for screenshots. |
+| `AWS_S3_BUCKET_BROWSER_SESSIONS` | `skyvern-browser-sessions` | Bucket for serialized session state. |
+| `AWS_S3_BUCKET_UPLOADS` | `skyvern-uploads` | Bucket for user uploads. |
+| `AZURE_STORAGE_ACCOUNT_NAME` / `_KEY` | `None` | Azure Blob auth. |
+| `AZURE_STORAGE_CONTAINER_*` | `skyvern-*` | Container names. |
+| `REDIS_URL` | `redis://localhost:6379/0` | Shared Redis (cloud-only paths). |
+
+## Auth and security
+
+| Variable | Default | Description |
+|---|---|---|
+| `SECRET_KEY` | `PLACEHOLDER` | JWT signing key. **Replace before production.** |
+| `SIGNATURE_ALGORITHM` | `HS256` | JWT algorithm. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080` (1 week) | JWT lifetime. |
+| `SKYVERN_API_KEY` | `PLACEHOLDER` | API key the embedded SDK uses to call the server. |
+| `SKYVERN_BASE_URL` | `https://api.skyvern.com` | Default cloud base URL. |
+| `SKYVERN_APP_URL` | `http://localhost:8080` | Used to build `app_url` links in API responses. |
+| `ENCRYPTOR_AES_SECRET_KEY` | `fillmein` | AES key for at-rest credential encryption. **Replace before production.** |
+| `ENCRYPTOR_AES_SALT` | `None` | AES salt. |
+| `ENCRYPTOR_AES_IV` | `None` | AES IV. |
+| `ARTIFACT_CONTENT_HMAC_KEYRING` | `None` | JSON keyring for HMAC-signed `/v1/artifacts/{id}/content` URLs. See [signed artifact URLs](/developers/going-to-production/artifact-signed-urls). |
+| `PYLON_IDENTITY_VERIFICATION_SECRET` | `None` | Secret for signing email/identity payloads. |
+
+## Credentials and 2FA
+
+| Variable | Default | Description |
+|---|---|---|
+| `CREDENTIAL_VAULT_TYPE` | `bitwarden` | `bitwarden` or `azure_vault`. |
+| `BITWARDEN_CLIENT_ID` / `_CLIENT_SECRET` / `_MASTER_PASSWORD` / `_EMAIL` | `None` | Bitwarden auth. |
+| `BITWARDEN_SERVER` / `BITWARDEN_SERVER_PORT` | `http://localhost` / `8002` | Bitwarden CLI proxy address. |
+| `BITWARDEN_TIMEOUT_SECONDS` | `60` | Per-call timeout. |
+| `BITWARDEN_MAX_RETRIES` | `2` | Retry count. |
+| `OP_SERVICE_ACCOUNT_TOKEN` | `None` | 1Password service-account token. |
+| `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | `None` | Azure Key Vault auth. |
+| `AZURE_CREDENTIAL_VAULT` | `None` | Azure Key Vault name. |
+| `CUSTOM_CREDENTIAL_API_BASE_URL` / `CUSTOM_CREDENTIAL_API_TOKEN` | `None` | Custom HTTP credential service. |
+| `TOTP_LIFESPAN_MINUTES` | `10` | How long Skyvern keeps a TOTP code. |
+| `VERIFICATION_CODE_INITIAL_WAIT_TIME_SECS` | `40` | Wait before checking for a 2FA code. |
+| `VERIFICATION_CODE_POLLING_TIMEOUT_MINS` | `15` | How long to poll for a code. |
+
+## Workflow and scheduling
+
+| Variable | Default | Description |
+|---|---|---|
+| `WORKFLOW_DOWNLOAD_DIRECTORY_PARAMETER_KEY` | `SKYVERN_DOWNLOAD_DIRECTORY` | Magic parameter name for download targets. |
+| `WORKFLOW_TEMPLATING_STRICTNESS` | `lax` | `lax` or `strict` Jinja templating. |
+| `WORKFLOW_WAIT_BLOCK_MAX_SEC` | `1800` | Cap on `wait` block duration. |
+| `WORKFLOW_START_BLOCK_LABEL` | `__start_block__` | Internal label for the implicit start block. |
+| `SCRIPT_REVIEW_DAILY_CAP` | `5` | Max script reviews per workflow per day. |
+
+## Telemetry and observability
+
+| Variable | Default | Description |
+|---|---|---|
+| `SKYVERN_TELEMETRY` | `True` | Set to `False` to disable PostHog. |
+| `POSTHOG_PROJECT_API_KEY` | preset | PostHog project key. |
+| `POSTHOG_PROJECT_HOST` | `https://app.posthog.com` | PostHog host. |
+| `MCP_POSTHOG_PROJECT_API_KEY` / `_HOST` | preset | PostHog for the MCP server. |
+| `OTEL_ENABLED` | `False` | Master switch for OpenTelemetry. |
+| `OTEL_SERVICE_NAME` | `skyvern` | Service name on traces. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `""` | OTLP collector URL. |
+| `OTEL_METRICS_ENABLED` | `True` | Emit OTEL metrics. |
+| `OTEL_LOGS_ENABLED` | `True` | Emit OTEL logs. |
+| `OTEL_EXPORTER_INSECURE` | `True` | Allow plaintext OTLP. |
+
+## Cleanup cron
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_CLEANUP_CRON` | `False` | Enable the periodic cleanup loop. |
+| `CLEANUP_CRON_INTERVAL_MINUTES` | `10` | Cleanup interval. |
+| `CLEANUP_STALE_TASK_THRESHOLD_HOURS` | `24` | Tasks idle longer than this are considered stale. |
+
+## Debug sessions
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEBUG_SESSION_TIMEOUT_MINUTES` | `20` | How long a debug session lives. |
+| `DEBUG_SESSION_TIMEOUT_THRESHOLD_MINUTES` | `10` | Renewal threshold. |
+| `SKYVERN_BROWSER_VNC_PORT` | `6080` | VNC port for streaming the persistent browser. |
+
+## Proxy
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_PROXY` | `False` | Route browser traffic through `HOSTED_PROXY_POOL`. |
+| `HOSTED_PROXY_POOL` | `""` | Comma-separated `http://user:pass@host:port` entries. |
+
+## Email (SMTP)
+
+| Variable | Default | Description |
+|---|---|---|
+| `SMTP_HOST` | `localhost` | SMTP host for the `send_email` block. |
+| `SMTP_PORT` | `25` | SMTP port. |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | `username` / `password` | SMTP auth. |
+
+## Next steps
+
+- [LLM configuration](./llm-configuration) — pick a provider and set the right `ENABLE_*` flag.
+- [Docker](./docker) — production-shaped container setup.
+- [Storage](./storage) — switch between local, S3, and Azure Blob.
+- [Embedded mode](/developers/getting-started/embedded-mode) — pass these settings to `Skyvern.local()` instead of writing a `.env`.

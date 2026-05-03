@@ -1,0 +1,83 @@
+---
+title: "schedules_enable"
+description: "Resume a paused schedule without changing its cron, timezone, or parameters."
+slug: sdk-reference/workflow-schedules/enable-schedule
+---
+
+This is the cheapest way to bring a schedule back online. Skyvern flips the `enabled` flag in the database and asks the scheduling backend to start firing the schedule again. Nothing else on the schedule changes.
+
+If the backend call fails, the DB toggle is rolled back so the row stays consistent with what the scheduling service believes.
+
+<CodeGroup>
+```python Python
+resp = await client.schedules_enable(
+    workflow_permanent_id="wpid_invoices",
+    workflow_schedule_id="ws_abc123",
+)
+assert resp.schedule.enabled is True
+```
+
+```typescript TypeScript
+const resp = await skyvern.schedulesEnable("wpid_invoices", "ws_abc123");
+console.assert(resp.schedule.enabled === true);
+```
+</CodeGroup>
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `workflow_permanent_id` | `str` | Yes | The workflow's permanent id. |
+| `workflow_schedule_id` | `str` | Yes | The schedule id (`ws_...`). |
+| `request_options` | `RequestOptions` | No | Per-request configuration (see below). |
+
+### Returns `WorkflowScheduleResponse`
+
+`schedule.enabled` is `True` on success. `next_runs` carries the next five fire times computed from the schedule's existing cron expression.
+
+### Errors
+
+- `404 Not Found` — workflow or schedule id is not visible to the calling org, or the schedule belongs to a different workflow.
+- `501 Not Implemented` — scheduling is disabled in this build.
+- `502 Bad Gateway` — backend sync failed. The DB toggle was reverted, so re-fetch and retry.
+
+### Related
+
+- [`schedules_disable`](./disable-schedule) — pause without deleting.
+- [`schedules_update`](./update-schedule) — change the cron expression or parameters at the same time.
+
+---
+
+### Request options
+
+Override timeout, retries, or headers for this call by passing `request_options` (Python) or a second options argument (TypeScript).
+
+<CodeGroup>
+```python Python
+from skyvern.client.core import RequestOptions
+
+request_options = RequestOptions(
+    timeout_in_seconds=120,
+    max_retries=3,
+    additional_headers={"x-custom-header": "value"},
+)
+```
+
+```typescript TypeScript
+{
+  timeoutInSeconds: 120,
+  maxRetries: 3,
+  headers: { "x-custom-header": "value" },
+}
+```
+</CodeGroup>
+
+| Option (Python) | Option (TypeScript) | Type | Description |
+|-----------------|---------------------|------|-------------|
+| `timeout_in_seconds` | `timeoutInSeconds` | `int` / `number` | HTTP timeout in seconds. |
+| `max_retries` | `maxRetries` | `int` / `number` | Retry count. |
+| `additional_headers` | `headers` | `dict` / `Record<string, string>` | Extra headers. |
+| `additional_query_parameters` | - | `dict` | Extra query parameters. |
+| `additional_body_parameters` | - | `dict` | Extra body parameters. |
+| - | `abortSignal` | `AbortSignal` | Signal to cancel the request. |
+| - | `apiKey` | `string` | Override API key. |
