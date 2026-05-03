@@ -1,15 +1,20 @@
 ---
 title: launch_cloud_browser
+description: Create a fresh cloud-hosted browser session and connect to it.
 slug: sdk-reference/browser-automation/launch-cloud-browser
 ---
 
-Create a new cloud browser session and connect to it. Returns a `SkyvernBrowser` with a live Playwright context.
+`launch_cloud_browser()` creates a new cloud Chromium session in Skyvern's infrastructure and returns a `SkyvernBrowser` connected to it. Use it when you want a clean browser state — no cookies, no history — for every run.
+
+If you would rather reuse the most recent idle session and only create a new one when none exists, see [`use_cloud_browser`](/sdk-reference/browser-automation/use-cloud-browser).
 
 <Note>
-Python uses `snake_case` (e.g., `launch_cloud_browser`, `get_working_page`); TypeScript uses `camelCase` (e.g., `launchCloudBrowser`, `getWorkingPage`). Some features - form automation, iframe management, `AILocator`, and local browser launch - are Python-only and clearly marked below.
+Cloud browser sessions are only available when the client is initialized with `SkyvernEnvironment.CLOUD` or `SkyvernEnvironment.STAGING`. Calling this from a self-hosted or local client raises `ValueError("Cloud browser sessions are supported only in the cloud environment")`.
 </Note>
 
----
+## Example
+
+The typical pattern is to launch a session, grab the working page, drive it with Playwright or the agent, and close the session at the end.
 
 <CodeGroup>
 ```python Python
@@ -35,13 +40,53 @@ await browser.close();
 
 ## Parameters
 
-| Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
-|-------------------|----------------|------|----------|---------|-------------|
-| `timeout` | `timeout` | `int` / `number` | No | `60` | Session timeout in minutes (5–1440). |
-| `proxy_location` | `proxyLocation` | `ProxyLocation` | No | `None` / `undefined` | Geographic proxy location for browser traffic. |
+All parameters are keyword-only. Both Python and TypeScript accept the same names; TypeScript uses `camelCase`.
 
-## Returns `SkyvernBrowser`
+| Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
+|--------------------|----------------|------|----------|---------|-------------|
+| `timeout` | `timeout` | `int` / `number` | No | `60` | Session lifetime in minutes. Counted from when the session is started. Must be between 5 and 1440 (24 hours). |
+| `proxy_location` | `proxyLocation` | `ProxyLocation` | No | `None` | Geographic proxy for browser traffic. See [Proxy & Geo-targeting](/developers/features/proxy-and-geo-targeting) for accepted values. |
+
+## Returns
+
+A `SkyvernBrowser` instance backed by a live Playwright `BrowserContext` connected to the cloud session over CDP. The returned object exposes:
+
+- `get_working_page()` / `getWorkingPage()` — the current foreground page wrapped with the AI helpers (`page.act`, `page.extract`, `page.agent.run_task`, etc.).
+- `new_page()` / `newPage()` — open a new tab in the same session.
+- `browser_session_id` — the cloud session ID (also returned by `create_browser_session`). You can resume this session later with [`connect_to_cloud_browser_session`](/sdk-reference/browser-automation/connect-to-cloud-browser-session).
+- `close()` — close the local Playwright context and the cloud session. Because the returned browser carries a `browser_session_id`, `close()` calls `close_browser_session(session_id)` for you, marking the cloud session completed. To detach without ending the cloud session, skip `close()` and reconnect later with [`connect_to_cloud_browser_session`](/sdk-reference/browser-automation/connect-to-cloud-browser-session).
+
+When `SkyvernEnvironment.CLOUD` is in use, the SDK logs a `https://app.skyvern.com/browser-session/<id>` URL on launch so you can watch the session live in the dashboard.
+
+## When to use it
+
+- You want each run to start from a fresh, isolated browser state.
+- You need to pin a session to a specific `proxy_location` for geo-restricted sites.
+- You plan to hand the session ID to another worker via [`connect_to_cloud_browser_session`](/sdk-reference/browser-automation/connect-to-cloud-browser-session) and want full control over its lifetime.
+
+For session reuse and cost efficiency, use [`use_cloud_browser`](/sdk-reference/browser-automation/use-cloud-browser) instead.
+
+<Warning>
+**`timeout` and `proxy_location` are silently ignored when `use_cloud_browser` reuses an existing session.** Reuse picks the most recent idle session as-is — its remaining time is whatever was left of its original `timeout` (default 60 minutes). If you need a guaranteed lifetime or a specific proxy region for this run, call `launch_cloud_browser` instead so a fresh session is created with your settings applied.
+</Warning>
 
 <Note>
-Cloud browser sessions are only available with `SkyvernEnvironment.CLOUD` / `.Cloud` or `SkyvernEnvironment.STAGING` / `.Staging`.
+**Sessions do not auto-extend.** If a long-running task hits the session's `timeout`, the cloud Chromium is torn down mid-task and the next Playwright operation raises a transport error. The SDK does not heartbeat or relaunch — set `timeout` generously (the cap is 1440 minutes / 24 hours) for tasks that may run long, or chain shorter tasks against `connect_to_cloud_browser_session` so each run starts with a known remaining budget.
 </Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="use_cloud_browser"
+    href="/sdk-reference/browser-automation/use-cloud-browser"
+  >
+    Reuse the most recent idle session before creating a new one.
+  </Card>
+  <Card
+    title="agent.run_task"
+    href="/sdk-reference/browser-automation/agent-run-task"
+  >
+    Hand off a multi-step AI goal to the page you just opened.
+  </Card>
+</CardGroup>

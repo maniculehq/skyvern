@@ -1,26 +1,92 @@
 ---
 title: connect_to_browser_over_cdp
+description: Attach Skyvern to an existing browser exposing the Chrome DevTools Protocol.
 slug: sdk-reference/browser-automation/connect-to-browser-over-cdp
 ---
 
-Connect to any browser running with Chrome DevTools Protocol (CDP) enabled, whether local or remote.
+`connect_to_browser_over_cdp(cdp_url)` attaches the SDK to a Chromium-based browser that is already running with the Chrome DevTools Protocol enabled, whether on your laptop, a remote server, or a tunneled session. It returns a `SkyvernBrowser` so the rest of your code looks identical to a cloud-launched session.
+
+Use this when you want the AI to drive a browser you control — for example one with your real cookies, extensions, or a logged-in profile — instead of a fresh cloud Chromium.
+
+<Note>
+The browser must already be running with `--remote-debugging-port=<port>` (or the equivalent) and reachable from the machine running your script. The SDK connects over the CDP WebSocket; it does not start the browser for you. To launch one locally, see [`launch_local_browser`](/sdk-reference/browser-automation/launch-local-browser).
+</Note>
+
+## Example
+
+Start Chrome on `:9222` (or use [`skyvern browser serve`](/integrations/cli) to expose your own Chrome over a tunnel), then connect:
 
 <CodeGroup>
 ```python Python
 browser = await skyvern.connect_to_browser_over_cdp("http://localhost:9222")
 page = await browser.get_working_page()
+
+await page.goto("https://example.com")
+await page.agent.run_task("Find and download the latest invoice")
 ```
 
 ```typescript TypeScript
 const browser = await skyvern.connectToBrowserOverCdp("http://localhost:9222");
 const page = await browser.getWorkingPage();
+
+await page.goto("https://example.com");
+await page.agent.runTask("Find and download the latest invoice");
 ```
 </CodeGroup>
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `cdp_url` / `cdpUrl` | `str` / `string` | Yes | The CDP WebSocket URL (e.g., `"http://localhost:9222"`). |
+| Parameter (Python) | Parameter (TS) | Type | Required | Description |
+|--------------------|----------------|------|----------|-------------|
+| `cdp_url` | `cdpUrl` | `str` / `string` | Yes | CDP endpoint URL. Accepts both HTTP (`http://localhost:9222`) and WebSocket (`ws://...`) forms. |
 
-## Returns `SkyvernBrowser`
+## Returns
+
+A `SkyvernBrowser` connected to the existing browser context. If the browser already has at least one open context, the SDK reuses the first one; otherwise it creates a new context. From there:
+
+- `get_working_page()` returns the foreground page wrapped with AI helpers.
+- `browser_address` exposes the same `cdp_url` you passed in, which downstream calls (like `agent.run_task`) forward to Skyvern so the cloud agent connects back to your browser.
+
+<Warning>
+**Multiple `connect_to_browser_over_cdp(...)` calls against the same browser share state.** The SDK always grabs `browser.contexts[0]`, so a second connection lands in the same context as the first, including its cookies and storage. To isolate flows, launch a separate Chrome (or a separate user-data-dir) per flow.
+</Warning>
+
+<Note>
+There is no heartbeat or auto-reconnect. If the underlying Chrome dies, the port closes, or a tunnel drops, the next operation against `page` raises a Playwright transport error. Handle this in your retry logic — Skyvern will not relaunch the browser for you.
+</Note>
+
+## Self-hosted prerequisites
+
+If you are using the self-hosted server, set these in your `.env` so Skyvern's worker connects to your CDP browser instead of launching its own:
+
+```bash
+BROWSER_TYPE=cdp-connect
+BROWSER_REMOTE_DEBUGGING_URL=http://127.0.0.1:9222
+```
+
+`BROWSER_TYPE` defaults to `chromium-headful`; switching it to `cdp-connect` is what tells the worker to attach over CDP. See [Browser Configuration](/developers/self-hosted/browser) for the full list of related settings.
+
+## Security
+
+CDP grants full control of the browser. Treat the URL like a credential:
+
+- Do not expose `:9222` directly on a public IP. Tunnel it (the CLI's `skyvern browser serve --tunnel` does this with an authenticated tunnel) or front it with a proxy that enforces authentication.
+- Anyone who can reach the URL can read pages, cookies, and any logged-in session in that browser.
+- If you tunnel a personal browser to Skyvern Cloud, the cloud agent inherits the same access — make sure you trust the prompt you are about to run.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="launch_local_browser"
+    href="/sdk-reference/browser-automation/launch-local-browser"
+  >
+    Launch a fresh local Chromium with CDP already enabled.
+  </Card>
+  <Card
+    title="Browser Configuration"
+    href="/developers/self-hosted/browser"
+  >
+    Configure `BROWSER_TYPE=cdp-connect` and related settings.
+  </Card>
+</CardGroup>
