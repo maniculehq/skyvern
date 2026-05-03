@@ -1,0 +1,132 @@
+---
+title: Task v2 (Observer)
+subtitle: The thinking agent that plans, iterates, and adapts mid-run
+description: Understand Skyvern's Task v2 (Observer/Cruise) execution engine: how it differs from Task v1, what thoughts are, how to read the v2 timeline, and when to pick it.
+slug: cloud/getting-started/task-v2
+keywords:
+  - task v2
+  - observer
+  - cruise
+  - skyvern-2.0
+  - thoughts
+  - planning agent
+  - iterations
+---
+
+Task v2 is Skyvern's iterative planning engine. Instead of running a single LLM loop and hoping the goal is reachable, v2 alternates between a *planning* layer that decides what to do next and an *execution* layer that carries it out. You'll meet it whenever you pick the **Skyvern 2.0** engine in the Cloud UI or pass `engine="skyvern-2.0"` from code. By the end of this page, you'll know when to reach for v2, what shows up in its timeline, and how its limits differ from v1.
+
+## v1 vs v2 in one paragraph
+
+Both engines share the same browser, the same action vocabulary, and the same artifact pipeline. The split is in how they decide what to do.
+
+Task v1 (`skyvern-1.0`) takes your prompt, screenshots the page, asks an LLM for the next action, executes it, and repeats until the goal is met or the step ceiling is hit. It is fast and predictable, but if the page demands a multi-step strategy that wasn't obvious from the first screenshot, v1 can get stuck in a local loop.
+
+Task v2 (`skyvern-2.0`) wraps that inner loop in an outer "observer" that produces structured *thoughts*: observations about what just happened, plans for the next phase, and check-ins on whether the goal is reachable. Every thought is a real LLM call with token and cost accounting, and each one can re-plan the remaining work. When v2 decides the current approach won't succeed, it pivots instead of grinding through extra steps.
+
+The full enum lives in `skyvern/schemas/runs.py`:
+
+```python
+class RunEngine(StrEnum):
+    skyvern_v1 = "skyvern-1.0"
+    skyvern_v2 = "skyvern-2.0"
+    openai_cua = "openai-cua"
+    anthropic_cua = "anthropic-cua"
+    ui_tars = "ui-tars"
+```
+
+The CUA engines (OpenAI, Anthropic, UI-TARS) are separate computer-use providers, not v2. This page is only about `skyvern-2.0`.
+
+## When to pick Task v2
+
+Pick v2 when the work needs judgment, not just precision. Concretely:
+
+- **Goals that span sections of a site.** "Find the report for last quarter and email it to me" is a v2 goal because the agent has to navigate, decide what to extract, and act on the result.
+- **Workflows that branch on what the page says.** If the next step depends on whether you see "Accept terms" or "Continue to payment," v2's planning layer handles that cleanly; v1 may overshoot.
+- **You want a workflow at the end.** Set `publish_workflow=True` (which forces the engine to v2 in `TaskRunRequest._force_v2_for_publish_workflow`) and Skyvern saves the successful run as a reusable workflow.
+
+Stick with v1 when the task is short, the path is obvious, and you'd rather pay for fewer LLM calls. v1 starts with `MAX_STEPS_PER_RUN=10` and a single planning context. v2 starts with `MAX_STEPS_PER_TASK_V2=25` and `MAX_ITERATIONS_PER_TASK_V2=10`, so each run is longer-running and more expensive on average.
+
+## Thoughts: what they are and how to read them
+
+A v2 run is a sequence of *thoughts*. Each thought is recorded in the `observer_thoughts` table (`ThoughtModel` in `skyvern/forge/sdk/db/models.py:905-936`) with the same kind of metadata Skyvern records for an LLM call: input/output/reasoning/cached token counts, dollar cost, model name, and the structured `output` JSON the planner produced.
+
+The relevant columns:
+
+| Column | What it captures |
+|---|---|
+| `observer_thought_type` | The phase of reasoning (e.g., `plan`, the default). |
+| `observer_thought_scenario` | A sub-classifier the planner sets. |
+| `user_input` | The user prompt or context the planner saw. |
+| `observation` | What the agent noticed about the current page. |
+| `thought` | The planner's reasoning in prose. |
+| `answer` | The decision or instruction passed to execution. |
+| `output` | Structured JSON the planner produced (e.g., the next sub-goal). |
+| `input_token_count`, `output_token_count`, `reasoning_token_count`, `cached_token_count`, `thought_cost` | Per-thought LLM accounting. |
+
+In the Cloud UI, thoughts appear interleaved with steps and actions on the run detail page. Reading them top-to-bottom is the fastest way to understand why the agent did what it did.
+
+## The unified timeline
+
+For both v2 and workflow runs, `GET /v1/runs/{run_id}/timeline` returns a single, chronological view that merges thoughts, steps, and per-block state. The endpoint is at `skyvern/forge/sdk/routes/agent_protocol.py:1743-1814`.
+
+Here's the smallest reasonable call from the Skyvern SDK:
+
+```python
+import os
+from skyvern import Skyvern
+
+client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
+
+timeline = await client.get_run_timeline(run_id="tsk_v2_abc123")
+for event in timeline:
+    print(event.type, event.created_at)
+```
+
+Two things to know before you call this:
+
+- v2 runs are stored as `TaskV2Model` rows (table `observer_cruises`, `observer_cruise_id` is the run ID). The timeline endpoint resolves the linked `workflow_run_id` and flattens it on the fly, so you pass the v2 run ID directly.
+- If you call `/timeline` for a v1 task ID or a CUA run, the API returns 400. Timelines are only emitted for runs that have a planning layer.
+
+## Limits to plan around
+
+The v2 ceilings are defined in `skyvern/config.py:89-90` and apply per run:
+
+| Setting | Default | What it caps |
+|---|---|---|
+| `MAX_STEPS_PER_TASK_V2` | `25` | Browser actions inside any one execution phase. |
+| `MAX_ITERATIONS_PER_TASK_V2` | `10` | Outer planning iterations: each one is a fresh "observe, plan, decide" cycle. |
+
+Hitting either limit ends the run; the status moves to `failed` or `terminated`. If you find yourself raising these regularly, the prompt is usually too broad. Tighten the goal or split it across a workflow.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Run Your First Task"
+    icon="play"
+    href="/cloud/getting-started/run-your-first-task"
+  >
+    Try v2 from the Discover page.
+  </Card>
+  <Card
+    title="Run from Code"
+    icon="code"
+    href="/cloud/getting-started/run-from-code"
+  >
+    Pass `engine="skyvern-2.0"` from the SDK or HTTP API.
+  </Card>
+  <Card
+    title="Monitor a Run"
+    icon="eye"
+    href="/cloud/getting-started/monitor-a-run"
+  >
+    Read the live thoughts and steps as they happen.
+  </Card>
+  <Card
+    title="Build a Workflow"
+    icon="diagram-project"
+    href="/cloud/building-workflows/build-a-workflow"
+  >
+    Promote a successful v2 run to a reusable workflow with `publish_workflow=True`.
+  </Card>
+</CardGroup>
