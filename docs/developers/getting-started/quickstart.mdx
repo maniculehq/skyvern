@@ -191,6 +191,23 @@ This is invaluable for debugging and understanding how Skyvern interprets your p
 
 You can run Skyvern with a browser on your own machine. This is useful for development, debugging, or automating internal tools on your local network.
 
+<Tip>
+**Skip the server with `Skyvern.local()`.** For Python scripts and notebooks, the SDK can boot Skyvern in-process. No `skyvern run server`, no Postgres required, with auto-fallback to in-memory SQLite when no database is configured.
+
+```python
+from skyvern import Skyvern
+
+skyvern = Skyvern.local()
+result = await skyvern.run_task(
+    prompt="Get the title of the top post",
+    url="https://news.ycombinator.com",
+    wait_for_completion=True,
+)
+```
+
+See [SDK Reference → Local mode](/sdk-reference/overview#local-mode) for the supported / unsupported feature list (scheduling, cloud sessions, rate limiting, and multi-worker execution require Postgres).
+</Tip>
+
 **Prerequisites:**
 - Skyvern SDK installed (`pip install skyvern`)
 - PostgreSQL database (local install or Docker)

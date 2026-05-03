@@ -38,7 +38,7 @@ flowchart LR
 |-----------|------|
 | **Skyvern API Server** | Orchestrates tasks, processes LLM responses, stores results. Includes an embedded Playwright-managed Chromium browser that executes web automation. |
 | **PostgreSQL** | Stores task history, workflows, credentials, and organization data |
-| **LLM Provider** | Analyzes screenshots and determines actions. You provide the API key (OpenAI, Anthropic, Azure OpenAI, Google Vertex AI, Amazon Bedrock, Groq, OpenRouter, or local via Ollama) |
+| **LLM Provider** | Analyzes screenshots and decides each action. You bring the API key. See the [provider matrix](#supported-llm-providers) below for everything Skyvern supports. |
 
 ### How a task executes
 
@@ -92,8 +92,33 @@ PostgreSQL 14+ is included in the Docker Compose setup. If you prefer an externa
 |--------|----------|
 | **Docker Compose** | Getting started, small teams, single-server deployments |
 | **Kubernetes** | Production at scale, teams with existing K8s infrastructure, high availability requirements |
+| **Embedded (`Skyvern.local()`)** | Scripts and notebooks. Boots Skyvern in your Python process. See [SDK overview → Local mode](/sdk-reference/overview#local-mode). |
 
-Most teams start with Docker Compose. It's the fastest path to a working deployment. Move to Kubernetes when you need horizontal scaling or want to integrate with existing orchestration infrastructure.
+Most teams start with Docker Compose. It's the fastest path to a working deployment. Move to Kubernetes when you need horizontal scaling or want to integrate with existing orchestration infrastructure. Embedded mode is for code that wants Skyvern in-process, not as a separate service.
+
+## Supported LLM providers
+
+Every provider lives on a single page, [LLM Configuration](/developers/self-hosted/llm-configuration). The matrix below is your shortcut into it: each row links to the section with the env vars and recommended `LLM_KEY` for that provider.
+
+| Provider | Recommended `LLM_KEY` | Notes |
+|----------|----------------------|-------|
+| [OpenAI](/developers/self-hosted/llm-configuration#openai) | `OPENAI_GPT5_5` | Default for new self-hosted installs. GPT-5 family + o-series reasoning models. |
+| [Anthropic](/developers/self-hosted/llm-configuration#anthropic) | `ANTHROPIC_CLAUDE4.7_OPUS` | Most capable for hard pages. Claude 3 → 4.7 family supported. |
+| [Azure OpenAI](/developers/self-hosted/llm-configuration#azure-openai) | `AZURE_OPENAI` (custom deployment) | Use when GPT-4/5 must run in your Azure tenant. |
+| [Google Gemini](/developers/self-hosted/llm-configuration#google-gemini) | `GEMINI_3_PRO` | Direct Gemini API. Cheapest path to Google models. |
+| [Vertex AI](/developers/self-hosted/llm-configuration#vertex-ai) | `VERTEX_GEMINI_3_PRO` | Gemini through your GCP project + service account. |
+| [Amazon Bedrock](/developers/self-hosted/llm-configuration#amazon-bedrock) | `BEDROCK_ANTHROPIC_CLAUDE4.7_OPUS_INFERENCE_PROFILE` | Claude through your AWS account, plus Amazon Nova. |
+| [MiniMax](/developers/self-hosted/llm-configuration#minimax) | `MINIMAX_M2_5` | Vision-capable, China-region inference. |
+| [VolcEngine (Doubao)](/developers/self-hosted/llm-configuration#volcengine-bytedance-doubao) | `VOLCENGINE_DOUBAO_SEED_1_6` | ByteDance Doubao with vision. |
+| [Novita](/developers/self-hosted/llm-configuration#novita) | `NOVITA_LLAMA_3_2_11B_VISION` | Open-source models (DeepSeek, Llama) with vision options. |
+| [Moonshot](/developers/self-hosted/llm-configuration#moonshot) | `MOONSHOT_KIMI_K2` | Long-context Kimi models. |
+| [Inception](/developers/self-hosted/llm-configuration#inception) | `INCEPTION_MERCURY_2` | Mercury series. |
+| [Ollama](/developers/self-hosted/llm-configuration#ollama-local-models) | `OLLAMA` | Run open-source models locally. Most aren't vision-capable. |
+| [OpenRouter](/developers/self-hosted/llm-configuration#openrouter) | `OPENROUTER` | Single key, dozens of models. |
+| [Groq](/developers/self-hosted/llm-configuration#groq) | `GROQ` | Fastest inference for open-source models. |
+| [OpenAI-compatible](/developers/self-hosted/llm-configuration#openai-compatible-endpoints) | `OPENAI_COMPATIBLE` | LiteLLM, vLLM, LocalAI, anything that speaks the OpenAI API. |
+
+Pick one provider to start. You can add `SECONDARY_LLM_KEY` later for cheaper sub-agent calls; see the [multiple-models guide](/developers/self-hosted/llm-configuration#using-multiple-models).
 
 ## Next steps
 

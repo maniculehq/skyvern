@@ -76,7 +76,7 @@
 
 ## SDK Reference
 
-- [SDK Overview](https://skyvern.com/docs/sdk-reference/overview.md): Install, authenticate, and configure the Skyvern Python and TypeScript clients
+- [SDK Overview](https://skyvern.com/docs/sdk-reference/overview.md): Install, authenticate, and configure the Skyvern Python and TypeScript clients; covers Cloud, self-hosted, and the in-process `Skyvern.local()` embedded mode
 - [Error Handling](https://skyvern.com/docs/sdk-reference/error-handling.md): Handle API errors, timeouts, rate limits, and configure retry behavior
 - [Complete Reference](https://skyvern.com/docs/sdk-reference/complete-reference.md): Every method, parameter, and type in the SDK on one page; optimized for LLM consumption
 

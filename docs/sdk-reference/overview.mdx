@@ -142,29 +142,88 @@ const skyvern = new Skyvern({
 
 ## Local mode
 
-Run Skyvern entirely on your machine - no cloud, no network calls. `Skyvern.local()` reads your `.env` file, boots the engine in-process, and connects the client to it.
-
-**Prerequisite:** Run `skyvern quickstart` once to create the `.env` file with your database connection and LLM API keys.
+`Skyvern.local()` runs the entire backend in-process. There's no Skyvern server to start, no Docker, no separate API. Your code imports `Skyvern`, calls `.local()`, and the same coroutine that issues SDK calls also services them through an httpx ASGI transport.
 
 ```python
 from skyvern import Skyvern
 
-# Python only. TypeScript requires a running Skyvern server
-client = Skyvern.local()
+# Python only. TypeScript requires a running Skyvern server.
+skyvern = Skyvern.local()
 
-result = await client.run_task(
+result = await skyvern.run_task(
     prompt="Get the title of the top post",
     url="https://news.ycombinator.com",
     wait_for_completion=True,
 )
 ```
 
-If you configured headful mode during `skyvern quickstart`, a Chromium window opens so you can watch the AI work.
+By default `.local()` auto-detects how to run. If `DATABASE_STRING` is set in your environment, `.env`, or `settings` overrides, it uses persistent mode (Postgres). Otherwise it falls back to zero-config in-memory SQLite. That's why the snippet above works with no configuration: the first call triggers an SQLite bootstrap inside the process.
+
+If you ran `skyvern quickstart` previously, the resulting `.env` is picked up automatically and you get the same behaviour as `skyvern run server`, minus the server.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `llm_config` | `LLMConfig \| LLMRouterConfig \| None` | `None` | Override the LLM. If omitted, uses `LLM_KEY` from `.env`. |
-| `settings` | `dict \| None` | `None` | Override `.env` settings at runtime. Example: `{"MAX_STEPS_PER_RUN": 100}` |
+| `llm_config` | `LLMConfig \| LLMRouterConfig \| None` | `None` | Override the LLM. If omitted, uses `LLM_KEY` from `.env`. Pass an `LLMConfig` for a single model or an `LLMRouterConfig` for a litellm router. |
+| `settings` | `dict \| None` | `None` | Override `.env` settings at runtime. Example: `{"MAX_STEPS_PER_RUN": 100, "BROWSER_TYPE": "chromium-headful"}`. |
+| `use_in_memory_db` | `bool \| None` | `None` (auto-detect) | `True` forces in-memory SQLite (no `.env` or Postgres needed). `False` requires `DATABASE_STRING` and `SKYVERN_API_KEY` from env, `.env`, or `settings`. `None` auto-detects from `DATABASE_STRING`. |
+
+### What in-memory mode supports
+
+In-memory mode is the simplest path: no database to provision, no API key bootstrap, no storage backend. It's enough for most scripts that drive a browser and return results.
+
+- `run_task()`, `extract()`, `click()`, `navigate()` (full browser automation).
+- Workflow CRUD (create, list, search, get, run).
+- Artifacts saved to a local temp directory (`file://` URIs).
+- Any LLM provider supported by litellm.
+
+### Not supported in in-memory mode (requires Skyvern Cloud or Postgres)
+
+- Workflow scheduling (requires persistent database).
+- Cloud browser sessions (requires S3/Azure storage).
+- Rate limiting (cloud-only).
+- Multi-worker / multi-process execution (requires Temporal).
+
+### Force a specific mode
+
+Auto-detection is convenient, but you can pin the mode when you want determinism:
+
+```python
+# Force in-memory SQLite (no .env or Postgres required).
+skyvern = Skyvern.local(use_in_memory_db=True)
+
+# Force persistent Postgres mode. Requires DATABASE_STRING + SKYVERN_API_KEY.
+skyvern = Skyvern.local(
+    use_in_memory_db=False,
+    settings={
+        "DATABASE_STRING": "postgresql+psycopg://skyvern@localhost/skyvern",
+        "SKYVERN_API_KEY": "sk-...",
+    },
+)
+```
+
+### Bring your own LLM
+
+Pass an `LLMConfig` to wire up a model that isn't already in the registry, without touching `.env`:
+
+```python
+from skyvern import Skyvern
+from skyvern.forge.sdk.api.llm.models import LLMConfig
+
+skyvern = Skyvern.local(
+    llm_config=LLMConfig(
+        model_name="gpt-4o",
+        required_env_vars=["OPENAI_API_KEY"],
+        supports_vision=True,
+        add_assistant_prefix=False,
+    )
+)
+```
+
+Skyvern registers the config as `CUSTOM_LLM` and uses it as the primary model. `required_env_vars` are checked at startup so misconfiguration fails fast.
+
+<Note>
+Run `pip install playwright && playwright install chromium` once before using local mode. Skyvern drives a real Chromium instance, and Playwright won't download it on demand.
+</Note>
 
 ---
 
