@@ -69,12 +69,13 @@ console.log(result.output);
 
 <CodeGroup>
 ```python Python
-Skyvern(
+# Constructor signature (reference)
+def Skyvern(
     api_key: str,                          # Required
     base_url: str | None = None,           # Override for self-hosted deployments
     environment: SkyvernEnvironment = CLOUD,# CLOUD, STAGING, or LOCAL
     timeout: float | None = None,          # HTTP request timeout (seconds)
-)
+) -> "Skyvern": ...
 
 # Local mode (Python only - runs entirely on your machine, reads .env)
 client = Skyvern.local()
@@ -284,7 +285,8 @@ const result = await page.agent.runWorkflow("wpid_abc123", {
 
 <CodeGroup>
 ```python Python
-result = await client.run_task(
+# Method signature (reference)
+async def run_task(
     prompt: str,                                # Required
     url: str | None = None,
     engine: RunEngine = RunEngine.skyvern_v2,
@@ -307,7 +309,7 @@ result = await client.run_task(
     max_screenshot_scrolls: int | None = None,
     browser_address: str | None = None,
     run_with: str | None = None,
-) -> TaskRunResponse
+) -> TaskRunResponse: ...
 ```
 
 ```typescript TypeScript
@@ -390,7 +392,8 @@ retry_run_webhook(run_id, webhook_url?)
 
 <CodeGroup>
 ```python Python
-result = await client.run_workflow(
+# Method signature (reference)
+async def run_workflow(
     workflow_id: str,                       # Required. Permanent ID (wpid_...).
     parameters: dict | None = None,
     wait_for_completion: bool = False,
@@ -410,7 +413,7 @@ result = await client.run_workflow(
     extra_http_headers: dict[str, str] | None = None,
     max_screenshot_scrolls: int | None = None,
     browser_address: str | None = None,
-) -> WorkflowRunResponse
+) -> WorkflowRunResponse: ...
 ```
 
 ```typescript TypeScript

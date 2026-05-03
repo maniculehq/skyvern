@@ -174,7 +174,7 @@ Before defining the workflow, store the login email and password Skyvern will us
     This definition file contains no sensitive information (like credentials or input values) and can be shared publicly. Once we make this, it can either be uploaded via the Cloud UI or sent as an input parameter to `create_workflow()`. We'll do this in Step 4.
 
     <CodeGroup>
-    ```json invoice-downloader.json
+    ```jsonc invoice-downloader.jsonc
     {
       "title": "Bulk Invoice Downloader",
       "description": "Download invoices from vendor portals, parse PDFs to extract amounts, and email a summary with attachments.",
@@ -183,6 +183,7 @@ Before defining the workflow, store the login email and password Skyvern will us
         "version": 1,
         "parameters": [],    // <-- filled in below
         "blocks": []         // <-- filled in Step 3
+      }
     }
     ```
 
@@ -226,7 +227,8 @@ Parameters are the inputs your workflow accepts. Defining them upfront lets you 
     Replace the empty `parameters` array with the following:
 
     <CodeGroup>
-    ```json JSON
+    ```jsonc JSON
+    // Replace the empty `parameters` array with these entries:
     "parameters": [
       { "key": "portal_url", "parameter_type": "workflow", "workflow_parameter_type": "string" },
       { "key": "start_date", "parameter_type": "workflow", "workflow_parameter_type": "string" },
