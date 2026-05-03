@@ -1,88 +1,168 @@
 ---
 title: agent.login
+description: Sign into a site using a stored credential, in the browser tab you already have open.
 slug: sdk-reference/browser-automation/agent-login
 ---
 
-Run a login workflow in the context of the current page. Supports multiple credential providers.
+`page.agent.login(...)` runs Skyvern's login workflow against the page you already have open. It picks the username, password, and (if configured) TOTP from the credential source you choose, types them into the right fields, and resolves any 2FA challenge — all without exposing the secret values to the LLM.
 
-## Parameters
-
-| Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
-|-------------------|----------------|------|----------|---------|-------------|
-| `credential_type` | first positional arg | `CredentialType` / `string` | Yes | - | Provider type: `skyvern`, `bitwarden`, `onepassword`, `azure_vault`. |
-| `url` | `url` | `str` / `string` | No | `None` / `undefined` | URL to navigate to before logging in. |
-| `credential_id` | `credentialId` | `str` / `string` | No | `None` / `undefined` | Skyvern credential ID. Required when `credential_type` is `skyvern`. |
-| `prompt` | `prompt` | `str` / `string` | No | `None` / `undefined` | Additional natural-language login instructions. |
-| `webhook_url` | `webhookUrl` | `str` / `string` | No | `None` / `undefined` | URL to receive a callback when login completes. |
-| `totp_identifier` | `totpIdentifier` | `str` / `string` | No | `None` / `undefined` | Identifier for TOTP-based two-factor authentication. |
-| `totp_url` | `totpUrl` | `str` / `string` | No | `None` / `undefined` | URL for TOTP secret retrieval. |
-| `extra_http_headers` | `extraHttpHeaders` | `dict` / `object` | No | `None` / `undefined` | Additional HTTP headers to set on the browser context. |
-| `timeout` | `timeout` | `float` / `number` | No | `1800` | Maximum time in seconds to wait for login to complete. |
+It returns a `WorkflowRunResponse` and always blocks until login finishes, so the line right after the call can assume the page is authenticated.
 
 <Note>
-Provider-specific parameters (`bitwarden_item_id`, `onepassword_vault_id`, etc.) are required based on the `credential_type` chosen. See the examples below for each provider.
+The credential never leaves the browser layer. The LLM sees placeholder tokens (e.g. `placeholder_Xk9m_password`) while deciding *where* to type. See [Credentials Overview](/cloud/managing-credentials/credentials-overview) for the full security model.
 </Note>
 
 ## Examples
+
+The first argument you pass is `credential_type`, which selects one of four overloads. Each overload has its own required parameters.
+
+### Skyvern-stored credential
+
+The simplest case. Create the credential once via [`create_credential`](/sdk-reference/credentials/create-credential) or the Cloud UI, then pass its ID:
 
 <CodeGroup>
 ```python Python
 from skyvern.schemas.run_blocks import CredentialType
 
-# Skyvern credentials
 await page.agent.login(
     credential_type=CredentialType.skyvern,
-    credential_id="cred_123",
+    credential_id="cred_1234567890",
 )
+```
 
-# Bitwarden
+```typescript TypeScript
+await page.agent.login("skyvern", { credentialId: "cred_1234567890" });
+```
+</CodeGroup>
+
+### Bitwarden item
+
+Pulls the username, password, and TOTP from a Bitwarden item. Requires `BITWARDEN_*` env vars to be configured on the Skyvern server.
+
+<CodeGroup>
+```python Python
 await page.agent.login(
     credential_type=CredentialType.bitwarden,
-    bitwarden_item_id="item_id",
-    bitwarden_collection_id="collection_id",
+    bitwarden_item_id="abc123",
+    bitwarden_collection_id="def456",  # optional
 )
+```
 
-# 1Password
+```typescript TypeScript
+await page.agent.login("bitwarden", {
+  bitwardenItemId: "abc123",
+  bitwardenCollectionId: "def456",
+});
+```
+</CodeGroup>
+
+### 1Password item
+
+Requires `OP_SERVICE_ACCOUNT_TOKEN` to be configured on the server.
+
+<CodeGroup>
+```python Python
 await page.agent.login(
     credential_type=CredentialType.onepassword,
     onepassword_vault_id="vault_id",
     onepassword_item_id="item_id",
 )
-
-# Azure Vault
-await page.agent.login(
-    credential_type=CredentialType.azure_vault,
-    azure_vault_name="vault_name",
-    azure_vault_username_key="username_key",
-    azure_vault_password_key="password_key",
-)
 ```
 
 ```typescript TypeScript
-// Skyvern credentials
-await page.agent.login("skyvern", {
-  credentialId: "cred_123",
-});
-
-// Bitwarden
-await page.agent.login("bitwarden", {
-  bitwardenItemId: "item_id",
-  bitwardenCollectionId: "collection_id",
-});
-
-// 1Password
 await page.agent.login("1password", {
   onepasswordVaultId: "vault_id",
   onepasswordItemId: "item_id",
 });
+```
+</CodeGroup>
 
-// Azure Vault
+### Azure Key Vault
+
+Reads three named secrets from a vault: a username, a password, and an optional TOTP secret.
+
+<CodeGroup>
+```python Python
+await page.agent.login(
+    credential_type=CredentialType.azure_vault,
+    azure_vault_name="my-vault",
+    azure_vault_username_key="example-username",
+    azure_vault_password_key="example-password",
+    azure_vault_totp_secret_key="example-totp",  # optional
+)
+```
+
+```typescript TypeScript
 await page.agent.login("azure_vault", {
-  azureVaultName: "vault_name",
-  azureVaultUsernameKey: "username_key",
-  azureVaultPasswordKey: "password_key",
+  azureVaultName: "my-vault",
+  azureVaultUsernameKey: "example-username",
+  azureVaultPasswordKey: "example-password",
+  azureVaultTotpSecretKey: "example-totp",
 });
 ```
 </CodeGroup>
 
-Returns `WorkflowRunResponse`.
+## Parameters
+
+Common parameters apply to every overload. Provider-specific parameters are required only for that provider; mixing them across overloads will raise a validation error.
+
+### Common
+
+| Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
+|--------------------|----------------|------|----------|---------|-------------|
+| `credential_type` | first positional arg | `CredentialType` / `string` | Yes | — | One of `skyvern`, `bitwarden`, `onepassword`, `azure_vault`. |
+| `url` | `url` | `str` / `string` | No | current page URL | Login page to navigate to. Required when the page is on `about:blank`. |
+| `prompt` | `prompt` | `str` / `string` | No | `None` | Extra instructions for the agent (e.g. "click the SSO button before typing"). |
+| `webhook_url` | `webhookUrl` | `str` / `string` | No | `None` | Webhook fired when the login workflow reaches a terminal status. |
+| `totp_identifier` | `totpIdentifier` | `str` / `string` | No | `None` | Email or phone number used to fetch a 2FA code. See [TOTP types](#totp-types). |
+| `totp_url` | `totpUrl` | `str` / `string` | No | `None` | URL the agent polls to retrieve a TOTP code on demand. |
+| `extra_http_headers` | `extraHttpHeaders` | `dict` / `object` | No | `None` | Headers added to every request the browser makes during login. |
+| `timeout` | `timeout` | `float` / `number` | No | `1800` | Seconds to wait for completion before raising `asyncio.TimeoutError`. |
+
+### Provider-specific
+
+| Provider | Required parameters |
+|----------|---------------------|
+| `CredentialType.skyvern` | `credential_id` |
+| `CredentialType.bitwarden` | `bitwarden_item_id`; `bitwarden_collection_id` optional |
+| `CredentialType.onepassword` | `onepassword_vault_id`, `onepassword_item_id` |
+| `CredentialType.azure_vault` | `azure_vault_name`, `azure_vault_username_key`, `azure_vault_password_key`; `azure_vault_totp_secret_key` optional |
+
+## TOTP types
+
+Skyvern supports three ways to obtain a 2FA code, set when you create the credential:
+
+| `TotpType` | Source | What you provide |
+|------------|--------|------------------|
+| `AUTHENTICATOR` | Time-based generator (RFC 6238) | The shared secret (e.g. `JBSWY3DPEHPK3PXP`). Skyvern computes the rolling code itself. |
+| `EMAIL` | Code mailed to a recipient | A `totp_identifier` (the email address). Skyvern polls for the inbound code via your webhook or polling URL. |
+| `TEXT` | Code sent via SMS | A `totp_identifier` (E.164 phone number). Same polling model as email. |
+
+If a credential has no TOTP, the field is `NONE` and the agent skips the 2FA step entirely.
+
+## Returns
+
+`WorkflowRunResponse` for the login workflow. Inspect:
+
+- `status` — `completed` on a successful login. Anything else means the agent never confirmed the post-login state.
+- `failure_reason` — populated when `status` is `failed`, `terminated`, or `timed_out`.
+- `run_id` — pass it to [`get_run`](/sdk-reference/tasks/get-run) for full step-level details, or to the dashboard URL `https://app.skyvern.com/runs/<run_id>`.
+
+The browser tab you called this on is now authenticated. Subsequent `page.goto`, `page.click`, or `page.agent.run_task` calls inherit the session.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="agent.run_task"
+    href="/sdk-reference/browser-automation/agent-run-task"
+  >
+    Hand the authenticated page to the agent to finish the goal.
+  </Card>
+  <Card
+    title="Credentials Overview"
+    href="/cloud/managing-credentials/credentials-overview"
+  >
+    Create and manage credentials end-to-end.
+  </Card>
+</CardGroup>

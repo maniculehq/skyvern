@@ -1,51 +1,137 @@
 ---
 title: agent.run_task
+description: Hand off a multi-step AI task on the page you already have open.
 slug: sdk-reference/browser-automation/agent-run-task
 ---
 
-Run a complete AI task in the context of the current page.
+`page.agent.run_task(prompt, ...)` runs a complete AI task in the context of the page you already have open. Unlike the top-level [`Skyvern.run_task`](/sdk-reference/tasks/run-task), which starts a brand-new run on a brand-new page, `agent.run_task` reuses the current page so the agent inherits your cookies, login state, and any DOM mutations you have already made.
+
+Use it when you want to drive part of a flow yourself with Playwright (logging in, navigating, dismissing a banner) and then hand the rest of the goal to the AI.
+
+## Example
+
+Open a browser, log in with stored credentials, then ask the agent to finish the job:
 
 <CodeGroup>
 ```python Python
+browser = await skyvern.launch_cloud_browser()
+page = await browser.get_working_page()
+
+await page.goto("https://app.example.com/login")
+await page.agent.login(credential_type="skyvern", credential_id="cred_123")
+
 result = await page.agent.run_task(
-    "Fill out the contact form and submit it",
+    "Find the invoice for last month and download the PDF",
     data_extraction_schema={
         "type": "object",
         "properties": {
-            "confirmation_number": {"type": "string"},
+            "invoice_number": {"type": "string"},
+            "amount_usd": {"type": "number"},
         },
     },
 )
-print(result.output)
+print(result.output)  # {"invoice_number": "INV-1042", "amount_usd": 89.0}
 ```
 
 ```typescript TypeScript
-const result = await page.agent.runTask("Fill out the contact form and submit it", {
-  dataExtractionSchema: {
-    type: "object",
-    properties: {
-      confirmation_number: { type: "string" },
+const browser = await skyvern.launchCloudBrowser();
+const page = await browser.getWorkingPage();
+
+await page.goto("https://app.example.com/login");
+await page.agent.login("skyvern", { credentialId: "cred_123" });
+
+const result = await page.agent.runTask(
+  "Find the invoice for last month and download the PDF",
+  {
+    dataExtractionSchema: {
+      type: "object",
+      properties: {
+        invoice_number: { type: "string" },
+        amount_usd: { type: "number" },
+      },
     },
   },
-});
+);
 console.log(result.output);
 ```
 </CodeGroup>
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `prompt` | `str` / `string` | Yes | Natural language task description. |
-| `engine` | `RunEngine` | No | AI engine to use. Default: `skyvern_v1`. |
-| `model` | `dict` / `Record<string, unknown>` | No | LLM model configuration. |
-| `url` | `str` / `string` | No | URL to navigate to. Defaults to current page URL. |
-| `data_extraction_schema` / `dataExtractionSchema` | `dict \| str` | No | JSON schema for output. |
-| `max_steps` / `maxSteps` | `int` / `number` | No | Maximum AI steps. |
-| `timeout` | `float` / `number` | No | Max wait time in seconds. Default: `1800`. |
-| `webhook_url` / `webhookUrl` | `str` / `string` | No | Webhook URL for notifications. |
-| `totp_identifier` / `totpIdentifier` | `str` / `string` | No | TOTP identifier. |
-| `totp_url` / `totpUrl` | `str` / `string` | No | TOTP URL. |
-| `title` | `str` / `string` | No | Run display name. |
-| `user_agent` | `str` / `string` | No | Custom User-Agent header for the browser. |
-| `error_code_mapping` / `errorCodeMapping` | `dict` / `Record<string, string>` | No | Custom error code mapping. |
+The call blocks until the run reaches a terminal status (`completed`, `failed`, `terminated`, `timed_out`, or `canceled`) or `timeout` elapses, whichever comes first. There is no `wait_for_completion` flag — agent tasks always wait.
 
-Returns `TaskRunResponse`.
+## Parameters
+
+| Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
+|--------------------|----------------|------|----------|---------|-------------|
+| `prompt` | first positional arg | `str` / `string` | Yes | — | Natural-language description of what to do. |
+| `engine` | `engine` | `RunEngine` | No | `skyvern_v1` | Which agent engine to use. See [engines](#engines) below. |
+| `model` | `model` | `dict` / `Record<string, unknown>` | No | `None` | Per-call LLM overrides forwarded to the worker. |
+| `url` | `url` | `str` / `string` | No | current page URL | Where to navigate before the task runs. If the page is on `about:blank`, this becomes required. |
+| `data_extraction_schema` | `dataExtractionSchema` | `dict \| str` | No | `None` | JSON Schema or schema string describing the desired structured output. |
+| `max_steps` | `maxSteps` | `int` / `number` | No | server default (`MAX_STEPS_PER_RUN`, `10`) | Hard cap on AI decision cycles. Each step is one screenshot-plan-act loop. |
+| `timeout` | `timeout` | `float` / `number` | No | `1800` | Seconds to wait for completion before raising `asyncio.TimeoutError`. |
+| `webhook_url` | `webhookUrl` | `str` / `string` | No | `None` | Webhook fired when the run reaches a terminal state. |
+| `totp_identifier` | `totpIdentifier` | `str` / `string` | No | `None` | Identifier (email, phone) the agent uses to fetch a 2FA code. |
+| `totp_url` | `totpUrl` | `str` / `string` | No | `None` | URL the agent calls to fetch a 2FA code. |
+| `title` | `title` | `str` / `string` | No | `None` | Human-readable run name shown in the dashboard. |
+| `error_code_mapping` | `errorCodeMapping` | `dict` / `Record<string, string>` | No | `None` | Map raw failure messages to your own error codes. Surfaces in the response. |
+| `user_agent` | `userAgent` | `str` / `string` | No | `None` | Override the browser User-Agent for this run. |
+
+The agent automatically forwards `browser_session_id` and `browser_address` from the surrounding `SkyvernBrowser`, so you do not need to pass them.
+
+## Returns
+
+A `TaskRunResponse` with the run's terminal state. Common fields:
+
+```json
+{
+  "run_id": "tsk_a1b2c3d4e5f6g7h8i9j0k",
+  "status": "completed",
+  "output": { "invoice_number": "INV-1042", "amount_usd": 89.0 },
+  "failure_reason": null,
+  "recording_url": "https://...",
+  "screenshot_urls": ["https://...", "https://..."],
+  "downloaded_files": [{ "url": "https://...", "checksum": "..." }],
+  "step_count": 7
+}
+```
+
+`output` follows the shape you passed in `data_extraction_schema`. When the task is not `completed`, inspect `failure_reason` and `status` — see [Error Handling](/developers/going-to-production/error-handling) for the failure-classification flow.
+
+## Engines
+
+| `engine` value | Source | When to use |
+|----------------|--------|-------------|
+| `skyvern_v1` (default) | `task_v1` execution path | Fastest, cheapest. Best for narrow, well-scoped tasks. |
+| `skyvern_v2` | `task_v2` execution path | Stronger planning. Best for multi-page, branching tasks. |
+| `openai_cua` | OpenAI Computer Use Agent | Computer-use models from OpenAI. |
+| `anthropic_cua` | Anthropic Computer Use Agent | Computer-use models from Anthropic. |
+| `ui_tars` | UI-TARS | Open-source vision-driven agent. |
+
+Self-hosted users need the matching provider enabled in `.env` (see [LLM Configuration](/developers/self-hosted/llm-configuration)).
+
+## How it differs from `Skyvern.run_task`
+
+| | `page.agent.run_task` | `Skyvern.run_task` |
+|---|------------------------|---------------------|
+| Page state | Reuses the current page (cookies, scroll, navigation) | Always starts a fresh page |
+| Browser session | Bound to the surrounding `SkyvernBrowser` | Optional `browser_session_id` argument |
+| Waiting | Always waits for completion | Returns immediately unless `wait_for_completion=True` |
+
+Use `agent.run_task` when you want continuity with a session you have already shaped. Use `Skyvern.run_task` for one-shot runs where the agent should manage navigation from scratch.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="agent.login"
+    href="/sdk-reference/browser-automation/agent-login"
+  >
+    Sign into a site before handing the page to the agent.
+  </Card>
+  <Card
+    title="Error Handling"
+    href="/developers/going-to-production/error-handling"
+  >
+    Classify and recover from non-`completed` runs.
+  </Card>
+</CardGroup>
