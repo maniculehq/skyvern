@@ -125,7 +125,7 @@ From the session detail page, click **Stop**. A confirmation dialog appears. The
 
 <img src="/images/cloud/session-stop-confirmation.png" alt="Stop browser session confirmation dialog with Cancel and Stop buttons" />
 
-Sessions also close automatically when their timeout expires, **even if a task is still running**. Set timeouts with enough margin for your longest expected task.
+When a session reaches its timeout, streaming and renewal checks can treat it as invalid. Long workflow runs try to renew active sessions every 5 minutes for up to 2 hours, but you should still set timeouts with enough margin for your longest expected task.
 
 <Warning>
 Closed sessions cannot be reopened. If you need the same login state later, create a [browser profile](/cloud/browser-management/browser-profiles) before closing.
@@ -135,7 +135,7 @@ Closed sessions cannot be reopened. If you need the same login state later, crea
 
 ## When to use sessions vs workflows
 
-If your steps run back-to-back with no pauses between them, a [workflow](/cloud/building-workflows/build-a-workflow) is more efficient. Workflow blocks share one browser instance with no inter-step startup cost.
+If your steps run back-to-back with no pauses between them, a [workflow](/cloud/building-workflows/build-a-workflow) is usually the better fit. Workflow blocks share one browser instance with no inter-step startup cost.
 
 Sessions are the right choice when you need:
 
@@ -147,16 +147,10 @@ Sessions are the right choice when you need:
 
 ## Sessions vs profiles
 
-| | Browser Session | Browser Profile |
-|---|----------------|-----------------|
-| **What it is** | Live browser instance | Saved snapshot of browser state |
-| **Lifetime** | Minutes to hours | Days to months |
-| **State** | Current page, cookies, open connections | Cookies, localStorage, session files |
-| **Billing** | Charged while open | No cost when not in use |
-| **Best for** | Back-to-back tasks, human-in-the-loop | Repeated logins, scheduled workflows |
+A session is a live browser; a profile is a saved snapshot of one. Use a session when you need a browser right now (back-to-back tasks, human-in-the-loop). Use a [profile](/cloud/browser-management/browser-profiles) when you want to skip a login on later runs.
 
 <Tip>
-Use a session when you need a live browser right now. Use a [profile](/cloud/browser-management/browser-profiles) when you want to save login state and reuse it later.
+For the full comparison, lifecycle diagram, and a picking rule of thumb, see [Profiles vs Sessions](/cloud/browser-management/profiles-vs-sessions).
 </Tip>
 
 ---
@@ -164,6 +158,13 @@ Use a session when you need a live browser right now. Use a [profile](/cloud/bro
 ## What's next
 
 <CardGroup cols={2}>
+  <Card
+    title="Profiles vs Sessions"
+    icon="scale-balanced"
+    href="/cloud/browser-management/profiles-vs-sessions"
+  >
+    Decide when to keep a browser open vs save its state for reuse
+  </Card>
   <Card
     title="Browser Profiles"
     icon="floppy-disk"

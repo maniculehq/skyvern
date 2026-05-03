@@ -1,0 +1,146 @@
+---
+title: Observability with OpenTelemetry
+subtitle: Send Skyvern traces, metrics, and logs to your OTel collector
+description: Configure self-hosted Skyvern to export OpenTelemetry traces, metrics, and logs to any OTLP-compatible collector. Companion to the Laminar integration.
+slug: developers/debugging/observability-otel
+keywords:
+  - OpenTelemetry
+  - OTLP
+  - traces
+  - metrics
+  - logs
+  - collector
+  - observability
+  - self-hosted
+---
+
+OpenTelemetry is the vendor-neutral way to wire Skyvern into your existing observability stack. Skyvern's OTel bootstrap is loaded from `cloud.observability.otel_setup`; in builds that include that module, Skyvern exports traces for HTTP requests, database calls, LLM round-trips, and browser actions, plus optional metrics and logs, all over OTLP. In the open-source checkout without that module, setting `OTEL_ENABLED=true` by itself is a no-op. By the end of this page, you'll know what must be present in your image and which env vars control export.
+
+This is the self-hosted companion to [Observability with Laminar](/developers/debugging/observability-with-laminar). You can run both at once: Laminar gets the LLM-centric view, OTel gets the everything-else view.
+
+## What gets traced
+
+Skyvern tries to initialize the OTel tracer provider before the FastAPI app boots (`skyvern/forge/api_app.py:191-211`). Doing this first matters: if instrumentation runs *after* `start_forge_app()`, your DB spans won't be children of the HTTP request span.
+
+The source-level bootstrap imports `cloud.observability.otel_setup`. The cloud-only dependency group (`pyproject.toml [dependency-groups].cloud`) carries the OTel auto-instrumentations that module expects:
+
+- HTTP server (`opentelemetry-instrumentation-fastapi`)
+- Database (`opentelemetry-instrumentation-asyncpg`, `-sqlalchemy`)
+- Outbound HTTP (`opentelemetry-instrumentation-httpx`, `-aiohttp`, `-requests`, `-urllib3`)
+- Async runtime (`opentelemetry-instrumentation-asyncio`)
+- Logging (`opentelemetry-instrumentation-logging`)
+- Cache and AWS (`opentelemetry-instrumentation-redis`, `-botocore`)
+- gRPC (`opentelemetry-instrumentation-grpc`)
+
+For source builds, include the `cloud/observability/otel_setup.py` package in your image and install or sync the `cloud` dependency group before flipping the flag. The published `skyvern` Python package alone does not prove that module is present.
+
+## Required env vars
+
+The OTel knobs live in `skyvern/config.py:535-540`:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `OTEL_ENABLED` | `False` | Master switch. Off, no exporter is wired up at all. |
+| `OTEL_SERVICE_NAME` | `skyvern` | Resource attribute that shows up as the service name in your backend. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `""` | The collector endpoint, e.g. `http://otel-collector:4317`. |
+| `OTEL_METRICS_ENABLED` | `True` | Emit metrics alongside traces. |
+| `OTEL_LOGS_ENABLED` | `True` | Emit logs alongside traces. |
+| `OTEL_EXPORTER_INSECURE` | `True` | Skip TLS verification on the OTLP channel. Set to `false` when targeting a TLS endpoint. |
+
+A minimal working config:
+
+```bash .env
+OTEL_ENABLED=true
+OTEL_SERVICE_NAME=skyvern-prod
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+OTEL_EXPORTER_INSECURE=true
+```
+
+Restart the Skyvern container and you should see `OTEL tracer provider initialized before forge app creation` in the logs. If you don't, the `cloud.observability.otel_setup` import failed silently, usually because the cloud observability module is not in the image.
+
+<Warning>
+The `ImportError` for `cloud.observability.otel_setup` is caught and swallowed (`skyvern/forge/api_app.py:198-204`); `OTEL_ENABLED=true` *without* that module is therefore a no-op with no error. The only signal you get is the absence of the "OTEL tracer provider initialized" line. If the import succeeds but initialization throws (bad endpoint, TLS misconfiguration, unreachable collector), you'll see a `Failed to initialize OTEL tracer provider early` warning at line 211 and the rest of the app continues without tracing. Grep for those two strings on first boot to confirm OTel is actually live.
+</Warning>
+
+## Targeting common backends
+
+Most managed backends accept OTLP-gRPC on port 4317 or OTLP-HTTP on 4318. The endpoint variable is the only thing that changes per backend; pick the protocol your collector expects.
+
+```bash # Local dev: collector running in the same compose network
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+OTEL_EXPORTER_INSECURE=true
+```
+
+```bash # Honeycomb / Grafana Cloud / etc. via OTLP-HTTPS
+OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io
+OTEL_EXPORTER_INSECURE=false
+```
+
+For backends that need an API key, set the standard OTel headers env var on the container:
+
+```bash
+OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<your-key>
+```
+
+The OTLP exporter reads `OTEL_EXPORTER_OTLP_HEADERS` directly; Skyvern doesn't need its own knob for it.
+
+## Trimming what gets exported
+
+Two flags let you cut volume:
+
+- `OTEL_METRICS_ENABLED=false` turns off metric exporting. Spans still flow.
+- `OTEL_LOGS_ENABLED=false` turns off log exporting. Useful when your logs are already shipped via a separate pipeline.
+
+If you want to drop specific instrumentations entirely (say, you don't care about `urllib3` spans), use the standard OTel `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` env var. Skyvern doesn't intercept it.
+
+## Internal trace utilities
+
+`skyvern/forge/sdk/trace/` contains Skyvern's own helpers for adding spans around domain operations like agent steps and workflow blocks. The auto-instrumentations cover request and DB plumbing; the helpers cover the work that wouldn't otherwise show up. You don't need to wire anything in to use them; they start spans through the OTel API, and those spans export only when the tracer provider initialized successfully.
+
+## Running OTel and Laminar together
+
+Both providers can be on at once. Skyvern initializes OTel first (so the DB and HTTP layers are instrumented), then Laminar after the forge app starts (`forge/api_app.py:215-232`) so it can wrap LiteLLM. The two backends will end up with different views of the same run, which is usually the point: OTel for ops, Laminar for LLM behavior.
+
+The ordering matters. If you tried to initialize Laminar first, its `LiteLLM` wrapping would happen before `start_forge_app()` constructed the LLM clients, and your LLM calls wouldn't be traced. Skyvern enforces the order regardless of how the two flags are set; you can't reverse it through configuration.
+
+```bash
+# OTel for everything except LLMs.
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+
+# Laminar for LLM-level traces.
+LMNR_PROJECT_API_KEY=<your-laminar-key>
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Observability with Laminar"
+    icon="chart-line"
+    href="/developers/debugging/observability-with-laminar"
+  >
+    Add LLM-level tracing alongside OTel.
+  </Card>
+  <Card
+    title="Using Artifacts"
+    icon="file-lines"
+    href="/developers/debugging/using-artifacts"
+  >
+    Per-run screenshots, recordings, and prompts.
+  </Card>
+  <Card
+    title="Self-Hosted Overview"
+    icon="server"
+    href="/developers/self-hosted/overview"
+  >
+    The rest of the self-hosted env-var surface.
+  </Card>
+  <Card
+    title="Troubleshooting Guide"
+    icon="wrench"
+    href="/developers/debugging/troubleshooting-guide"
+  >
+    Diagnose runs that misbehave.
+  </Card>
+</CardGroup>

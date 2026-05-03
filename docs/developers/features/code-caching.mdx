@@ -1,7 +1,7 @@
 ---
 title: Code Caching
-subtitle: Convert successful runs into cached code for faster, deterministic replays
-description: Skyvern records the actions an AI run takes and generates executable code from them. Subsequent runs execute the cached code directly, skipping LLM inference and screenshot analysis. Faster, cheaper, deterministic.
+subtitle: Convert successful runs into cached code for deterministic replays
+description: Skyvern records the actions an AI run takes and generates executable code from them. Subsequent code-mode runs execute the cached code directly, skipping LLM inference and screenshot analysis.
 slug: developers/features/code-caching
 icon: bolt
 keywords:
@@ -15,18 +15,39 @@ keywords:
   - progressive caching
 ---
 
-When Skyvern's agent completes a task or workflow, it records the actions it took and generates reusable code from them. Later runs can execute that cached code directly, skipping LLM inference and screenshot analysis entirely. This makes cached runs faster, cheaper, and deterministic. If the cached code fails because a page changed, Skyvern falls back to the agent automatically and regenerates the cache.
+When Skyvern's agent completes an eligible task or workflow, it records the actions it took and generates reusable code from them. Later code-mode runs can execute that cached code directly, skipping LLM inference and screenshot analysis. This lowers repeated-run inference cost and makes behavior more deterministic. If the cached code fails because a page changed, Skyvern can fall back to the agent and regenerate the cache when `ai_fallback` is enabled.
 
 ## How it works
 
-The first run uses the agent as normal. Set `engine="skyvern-2.0"` when creating the task or workflow, and Skyvern records the actions as generated code while the agent executes.
+For a task-first flow, set `engine="skyvern-2.0"`, `publish_workflow=True`, and `run_with="code"` so Skyvern can publish the successful run as a workflow-backed script:
 
-On subsequent runs, pass `run_with="code"` to execute the cached code directly. No screenshots, no LLM reasoning, just the recorded action sequence replaying against the page.
+```python
+result = await client.run_task(
+    prompt="Extract the latest invoice total from the portal.",
+    url="https://portal.example.com",
+    engine="skyvern-2.0",
+    publish_workflow=True,
+    run_with="code",
+    wait_for_completion=True,
+)
+```
 
-If the cached code hits something unexpected (a layout change, a new field, a missing element), Skyvern re-runs with the full agent and regenerates the cache. You don't need to handle this yourself.
+For saved workflows, set the workflow's `run_with` field to `code` or pass `run_with="code"` when starting a run:
+
+```python
+run = await client.run_workflow(
+    workflow_id="wpid_abc123",
+    parameters={"target_url": "https://portal.example.com"},
+    run_with="code",
+)
+```
+
+On subsequent runs, pass `run_with="code"` to execute the cached code directly. On a cache hit, Skyvern replays the recorded action sequence instead of asking the LLM for every step.
+
+If the cached code hits something unexpected (a layout change, a new field, a missing element), Skyvern re-runs with the full agent and can regenerate the cache when `ai_fallback=true`. That is the default for normal code-mode runs and is forced on the adaptive caching path. If you set `ai_fallback=false` on a non-adaptive run, the failure is returned instead.
 
 <Note>
-The SDK default engine is `skyvern-1.0`. To use code caching, explicitly set `engine="skyvern-2.0"`. In the Cloud UI, `skyvern-2.0` is the default.
+The SDK default engine is `skyvern-1.0`. To start from a task, explicitly set `engine="skyvern-2.0"` and publish the successful run as a workflow. In the Cloud UI, `skyvern-2.0` is the default task engine.
 </Note>
 
 ## What gets cached
@@ -37,7 +58,7 @@ The SDK default engine is `skyvern-1.0`. To use code caching, explicitly set `en
 
 **Progressive caching** handles workflows with conditionals. Run 1 covers branch A, run 2 covers branch B, and so on. Previous caches are preserved, so coverage builds up over time.
 
-**Not cached:** conditional evaluation blocks, wait blocks, and code blocks always run live because their behavior depends on runtime state.
+**Not cached:** wait blocks, code blocks, control scaffolding, and blocks marked `disable_cache` or `requires_agent` run live because their behavior depends on runtime state. Conditional branches can build coverage over time through progressive caching.
 
 <Tip>
 Pair cached code with [scheduled workflows](/cloud/building-workflows/scheduling) for cheap, reliable recurring runs. The first scheduled run builds the cache, and every subsequent run executes from it.
@@ -46,6 +67,12 @@ Pair cached code with [scheduled workflows](/cloud/building-workflows/scheduling
 ## Learn more
 
 <CardGroup cols={2}>
+  <Card
+    title="Generated Scripts"
+    href="/developers/features/scripts"
+  >
+    Developer deep-dive: cache keys, pinning, deploys, and the script reviewer.
+  </Card>
   <Card
     title="Cost control"
     href="/developers/optimization/cost-control"

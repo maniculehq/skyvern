@@ -1,0 +1,125 @@
+---
+title: Cleanup Cron
+subtitle: Reclaim temp files and kill stale browser processes on a schedule
+description: Configure Skyvern's optional in-process cleanup scheduler to remove temp files and terminate orphaned Playwright/Chromium processes between runs on self-hosted deployments.
+slug: developers/self-hosted/cleanup-cron
+keywords:
+  - cleanup
+  - cron
+  - temp files
+  - stale processes
+  - playwright
+  - chromium
+  - self-hosted
+---
+
+If you're running Skyvern on a long-lived host, leaked Playwright and Chromium processes pile up and a busy temp directory chews disk. The cleanup cron is an optional, in-process scheduler that wakes up at a fixed interval, kills idle browser processes that have been around too long, and clears the temp directory. By the end of this page, you'll know when to enable it, what knobs it has, and what guardrails keep it from killing healthy work.
+
+The cleanup cron is off by default. Turn it on when self-hosting on a host that doesn't recycle the Skyvern process often.
+
+## What it cleans
+
+`skyvern/services/cleanup_service.py` runs two passes per tick:
+
+- **Temp files**: every entry under `TEMP_PATH` (default `./temp`) is removed. This catches Playwright user-data dirs, half-written downloads, and anything else Skyvern wrote there.
+- **Stale browser processes**: any process whose name matches a known browser binary (`playwright`, `node`, `chromium`, `chrome`, `firefox`, `webkit`, `chromium-browser`, `google-chrome`, `google-chrome-stable`, `msedge`, `microsoft-edge`, `microsoft-edge-stable`) and has been running longer than the kill threshold is sent SIGTERM, then SIGKILL after a 3 second grace period.
+
+<Warning>
+Process-name matching is a *substring* check (`skyvern/services/cleanup_service.py:140`), not an exact match. `node` matches anything whose process name contains `node`, including `nodemon`, `node_exporter`, and similar long-running processes. If you run unrelated Node-based services in the same container, the cron can hit them. Run cleanup in a single-purpose Skyvern container or accept this trade-off knowingly.
+</Warning>
+
+The process matcher uses `psutil`, so it only sees processes the Skyvern container can see. In a Docker setup, that's the processes inside the container, which is exactly what you want.
+
+## When to enable it
+
+Turn it on if you can answer "yes" to any of these:
+
+- Your host runs Skyvern as a long-lived service (systemd, bare-metal, a long-running pod).
+- You see "no space left on device" errors traced to the temp dir.
+- `ps` regularly shows orphaned `chromium` or `node` processes from runs that ended hours ago.
+
+Skip it if your deployment recycles the container after each batch (Kubernetes Jobs, ECS Tasks scoped to a single workflow, etc.). The kernel already cleans those processes when the container exits.
+
+## Settings
+
+Three env vars at `skyvern/config.py:527-532` control the cron:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENABLE_CLEANUP_CRON` | `False` | Master switch. When `False`, the scheduler never starts. |
+| `CLEANUP_CRON_INTERVAL_MINUTES` | `10` | How often the cleanup loop runs. |
+| `CLEANUP_STALE_TASK_THRESHOLD_HOURS` | `24` | A task or workflow run that hasn't been updated in this many hours is treated as stuck, not active, when deciding whether to skip cleanup. |
+
+A reasonable production config:
+
+```bash .env
+ENABLE_CLEANUP_CRON=true
+CLEANUP_CRON_INTERVAL_MINUTES=10
+CLEANUP_STALE_TASK_THRESHOLD_HOURS=24
+```
+
+The interval is the wall-clock period between ticks, not a cron expression. The implementation is a plain `asyncio.sleep` loop in `cleanup_scheduler()`.
+
+## The "active runs" guardrail
+
+The cleanup loop calls `check_running_tasks_or_workflows()` first. If the database reports any task or workflow run that's been updated within the stale threshold, the cleanup pass is skipped: nothing is killed, nothing is deleted. This is the guardrail that prevents the cron from terminating browsers in the middle of real work.
+
+If runs *exist* but haven't been touched in longer than `CLEANUP_STALE_TASK_THRESHOLD_HOURS`, they're treated as stuck, a warning is logged with the count, and the cleanup proceeds. The threshold is also the cutoff for that warning. Lower it (say, 4 hours) on a system where a 24-hour stuck run is unambiguous garbage. Raise it (say, 72 hours) on a system where long human-in-the-loop pauses are normal.
+
+The active-runs check itself is failsafe-on-error: if the database query throws, `check_running_tasks_or_workflows` returns `(True, 0, 0)` (`cleanup_service.py:82-85`), which means a database hiccup will *skip* a cleanup tick rather than risk killing healthy work. The trade-off is that a persistently broken database will silently disable cleanup; if you see no `Cleaned up...` logs and no `Skipping cleanup...` logs either, look at the cron's exception logging.
+
+## Process kill threshold
+
+The 60-minute kill threshold is hardcoded inside `get_stale_browser_processes(max_age_minutes=60)`. The cron only kills browser-named processes older than that. If your longest legitimate run is 90 minutes, run the cron less often than every 60 minutes or accept that the cron can hit it. Running with `ENABLE_CLEANUP_CRON=false` and your own `cron`/`systemd-timer` is fine if you need a different threshold.
+
+## Verifying it's running
+
+After turning the flag on and restarting Skyvern, you'll see this line at startup:
+
+```text
+Cleanup scheduler started interval_minutes=10
+```
+
+On every tick it logs the outcome of the active-runs check, then either:
+
+- `Skipping cleanup: tasks or workflows are currently running`, or
+- `Cleaned up temp directory files_removed=N` and/or `Killed stale browser processes processes_killed=N`.
+
+If you see neither for several intervals and don't think the system is busy, double-check `ENABLE_CLEANUP_CRON=true` and that `TEMP_PATH` exists.
+
+## Stopping the cron
+
+The scheduler is bound to the FastAPI lifespan, so a normal SIGTERM gives it a chance to finish its current tick. Forced kills (SIGKILL, container OOM) skip the shutdown hook, which is fine: the cron has no persistent state.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Self-Hosted Overview"
+    icon="server"
+    href="/developers/self-hosted/overview"
+  >
+    Architecture and deployment options.
+  </Card>
+  <Card
+    title="Storage"
+    icon="database"
+    href="/developers/self-hosted/storage"
+  >
+    Where artifacts and recordings live.
+  </Card>
+  <Card
+    title="Browser"
+    icon="browser"
+    href="/developers/self-hosted/browser"
+  >
+    Tune the embedded Chromium for your environment.
+  </Card>
+  <Card
+    title="Troubleshooting Guide"
+    icon="wrench"
+    href="/developers/debugging/troubleshooting-guide"
+  >
+    Common self-hosted pitfalls.
+  </Card>
+</CardGroup>

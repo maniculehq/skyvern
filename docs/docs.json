@@ -59,6 +59,8 @@
               "cloud/getting-started/core-concepts",
               "cloud/getting-started/ai-agents-quickstart",
               "cloud/getting-started/overview",
+              "cloud/getting-started/runs-overview",
+              "cloud/getting-started/task-v2",
               "cloud/getting-started/mcp"
             ]
           },
@@ -90,7 +92,8 @@
             "group": "Re-using Browsers",
             "pages": [
               "cloud/browser-management/browser-sessions",
-              "cloud/browser-management/browser-profiles"
+              "cloud/browser-management/browser-profiles",
+              "cloud/browser-management/profiles-vs-sessions"
             ]
           },
           {
@@ -117,7 +120,8 @@
               "integrations/zapier",
               "integrations/make",
               "integrations/n8n",
-              "integrations/workato"
+              "integrations/workato",
+              "integrations/mcp"
             ]
           },
           {
@@ -152,7 +156,8 @@
               "developers/features/browser-sessions",
               "developers/features/proxy-and-geo-targeting",
               "developers/features/authentication-and-2fa",
-              "developers/features/code-caching"
+              "developers/features/code-caching",
+              "developers/features/scripts"
             ]
           },
           {
@@ -172,6 +177,7 @@
             "group": "Handling Authentication",
             "pages": [
               "developers/credentials/store-credentials",
+              "developers/credentials/credential-vaults",
               "developers/credentials/handle-2fa",
               "developers/credentials/troubleshooting-login"
             ]
@@ -199,6 +205,7 @@
               "developers/debugging/using-artifacts",
               "developers/debugging/troubleshooting-guide",
               "developers/debugging/observability-with-laminar",
+              "developers/debugging/observability-otel",
               "developers/debugging/faq"
             ]
           },
@@ -212,6 +219,7 @@
               "developers/self-hosted/proxy",
               "developers/self-hosted/kubernetes",
               "developers/self-hosted/storage",
+              "developers/self-hosted/cleanup-cron",
               "integrations/local-llms"
             ]
           }
@@ -679,10 +687,6 @@
     },
     {
       "source": "/home/integrations/mcp-server",
-      "destination": "/developers/getting-started/mcp"
-    },
-    {
-      "source": "/integrations/mcp",
       "destination": "/developers/getting-started/mcp"
     },
     {

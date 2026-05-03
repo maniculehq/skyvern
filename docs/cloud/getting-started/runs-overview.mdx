@@ -1,0 +1,151 @@
+---
+title: Runs Overview
+subtitle: One unified history for tasks, workflows, and observer agents
+description: Understand Skyvern's unified `run` abstraction across Task v1, Task v2, and workflow runs, and how the `/v1/runs/...` endpoints fit alongside the legacy `/v1/run/tasks` and `/v1/run/workflows` creation routes.
+slug: cloud/getting-started/runs-overview
+keywords:
+  - runs
+  - run history
+  - task run
+  - workflow run
+  - run id
+  - timeline
+  - artifacts
+---
+
+Whether you launch a task, run a workflow, or kick off a Skyvern 2.0 observer, what comes out the other side is a *run*. The Cloud UI's Runs page, the run detail view, and the `/v1/runs/...` endpoints all speak this single abstraction. By the end of this page, you'll know what a run is, which routes return what, and how to navigate from a run ID to the artifacts and timeline behind it.
+
+## What a run is
+
+A run is one execution of one thing: a task, a workflow, or an observer cruise. Every run gets its own row in `task_runs` (`TaskRunModel`, `skyvern/forge/sdk/db/models.py:1000-1064`), regardless of which engine produced it. That row carries the fields that are common to all of them:
+
+- `run_id`: the public identifier you'll see everywhere.
+- `task_run_type`: which engine produced this run (task, workflow, or observer).
+- `status`: open-ended because each engine has its own status set; the universal terminal values are `completed`, `failed`, `terminated`, `canceled`, `timed_out`.
+- `started_at`, `finished_at`, `duration_ms`: wall-clock window of the run.
+- `compute_cost`, `instance_type`, `vcpu_millicores`, `memory_mb`: what the run billed.
+- `parent_workflow_run_id`: set when this run is a sub-task of a workflow, so the UI can stitch nested runs together.
+
+Because `task_runs` is the shared spine, the Runs page can list everything in one paginated view, and a single endpoint, `GET /v1/runs/{run_id}`, can return whatever shape that ID actually is.
+
+## The run-type taxonomy
+
+The `RunType` enum (`skyvern/schemas/runs.py:341-348`) is the source of truth for what a run can be:
+
+| `RunType` | Engine | What it represents |
+|---|---|---|
+| `task_v1` | `skyvern-1.0` | A single-prompt task on the legacy engine. |
+| `task_v2` | `skyvern-2.0` | An observer/cruise run that produces thoughts and a workflow run. |
+| `workflow_run` | (n/a) | A run of a saved workflow. |
+| `openai_cua` | `openai-cua` | Computer-use agent backed by OpenAI's CUA model. |
+| `anthropic_cua` | `anthropic-cua` | Computer-use agent backed by Anthropic's CUA model. |
+| `ui_tars` | `ui-tars` | Computer-use agent backed by UI-TARS. |
+
+`RunStatus` defines the universal status set (`skyvern/schemas/runs.py:362-379`). A status is "final" if it's one of `completed`, `failed`, `terminated`, `canceled`, `timed_out`. The same set is used by the sync cron and the partial index, so any code that needs to know "is this run done" reads from `TERMINAL_STATUSES`.
+
+## Creating runs vs reading runs
+
+Two creation routes still live under `/v1/run/`:
+
+- `POST /v1/run/tasks` creates *and starts* a task. Returns the run object.
+- `POST /v1/run/workflows` creates *and starts* a workflow run.
+
+Once a run exists, everything you do with it goes through `/v1/runs/{run_id}` (note the plural). The split exists because creation needs a request body specific to the engine, but every other operation only needs the run ID.
+
+The relevant operations:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/v1/runs/{run_id}` | Run details: status, output, costs, parent run ID. |
+| `POST` | `/v1/runs/{run_id}/cancel` | Cancel an active run. |
+| `POST` | `/v1/runs/{run_id}/retry_webhook` | Re-fire the run's webhook delivery. |
+| `GET` | `/v1/runs/{run_id}/artifacts` | List screenshots, recordings, prompts, downloads. |
+| `GET` | `/v1/runs/{run_id}/timeline` | Newest-first merge of thoughts, steps, blocks (workflow + task v2 only). |
+| `GET` | `/v1/runs` | Paginated history with filters. |
+
+The route definitions are in `skyvern/forge/sdk/routes/agent_protocol.py:461-2307`.
+
+## Reading a run end to end
+
+A typical "what just happened" flow with the SDK:
+
+```python
+import os
+from skyvern import Skyvern
+
+client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
+
+run = await client.get_run(run_id="wfr_abc123")
+print(run.status, run.task_run_type)
+
+terminal_statuses = {"completed", "failed", "terminated", "canceled", "timed_out"}
+if run.status not in terminal_statuses:
+    raise SystemExit("Run still in progress")
+
+artifacts = await client.get_run_artifacts(run_id=run.run_id)
+for a in artifacts:
+    print(a.artifact_type, a.uri)
+```
+
+`get_run` works for every run type. `get_run_artifacts` works for every run type. `get_run_timeline` returns 400 for v1 tasks (no planning layer) and the CUA engines, but works for workflow runs and v2 runs (`agent_protocol.py:1771-1814`). The timeline list is sorted newest-first in source; reverse it in your client if you want oldest-to-newest playback.
+
+## When parent and child runs both exist
+
+A v2 task run *also* spawns an internal workflow run when it succeeds (that's how it produces a publishable workflow). The v2 run's row carries the public `run_id` you'd interact with; the workflow run row stays linked through `parent_workflow_run_id`. When you call `/timeline` on the v2 run ID, the API resolves the linked workflow run and flattens both into one timeline.
+
+You don't typically need to touch the child run directly. The parent ID is the one to use.
+
+## Listing and filtering
+
+`GET /v1/runs` supports the filters you'd expect from the Runs page: status, run type, workflow ID, date range, and free-text search across `searchable_text` (a tsvector-style column on `task_runs`). The Cloud UI's Runs page is just a thin view on this endpoint, which is why the same filters work in code.
+
+## Webhooks: what to expect
+
+When a run reaches a final status, Skyvern POSTs the run payload to the `webhook_callback_url` you set on the request. Two things matter for receivers:
+
+**Signature.** Each delivery carries `x-skyvern-timestamp` (Unix seconds) and `x-skyvern-signature` (HMAC-SHA256 of the exact JSON string Skyvern sends, keyed with your API key). Treat the timestamp as a freshness signal, but the current signing helper signs the body only. The signing function is at `skyvern/forge/sdk/core/security.py:75-95`. Verify the raw request body before parsing or re-serializing it.
+
+```python
+import hmac, hashlib
+
+def verify(api_key: str, body: bytes, signature: str) -> bool:
+    expected = hmac.new(api_key.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+**No automatic retries.** Skyvern delivers each webhook once. A 5xx response or a timeout does *not* trigger an automatic retry. If the receiver was down, call `POST /v1/runs/{run_id}/retry_webhook` to re-fire it (replay paths through `skyvern/services/webhook_service.py:482-507` are also one-shot, they just give you a new attempt). Normal task, workflow, and Task v2 deliveries use a 30 second timeout; the retry/replay endpoint uses 60 seconds. Either way, retries are your job.
+
+The implication: receivers must be idempotent. If you respond `200` and then your handler crashes, the run is already marked delivered. Persist the work *before* you return success.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Run Your First Task"
+    icon="play"
+    href="/cloud/getting-started/run-your-first-task"
+  >
+    Kick off a v1 task and watch it land in the Runs page.
+  </Card>
+  <Card
+    title="Task v2"
+    icon="brain"
+    href="/cloud/getting-started/task-v2"
+  >
+    Pick the planning engine when judgment is needed.
+  </Card>
+  <Card
+    title="Run from Code"
+    icon="code"
+    href="/cloud/getting-started/run-from-code"
+  >
+    Create runs over HTTP or with the SDK.
+  </Card>
+  <Card
+    title="Run History"
+    icon="clock-rotate-left"
+    href="/cloud/viewing-results/run-history"
+  >
+    Filter and search across past runs.
+  </Card>
+</CardGroup>

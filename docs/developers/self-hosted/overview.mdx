@@ -93,9 +93,11 @@ PostgreSQL 14+ is included in the Docker Compose setup. If you prefer an externa
 | **Docker Compose** | Getting started, small teams, single-server deployments |
 | **Kubernetes** | Production at scale, teams with existing K8s infrastructure, high availability requirements |
 
-Most teams start with Docker Compose. It's the fastest path to a working deployment. Move to Kubernetes when you need horizontal scaling or want to integrate with existing orchestration infrastructure.
+Most teams start with Docker Compose. It has the smallest setup surface for a working deployment. Move to Kubernetes when you need horizontal scaling or want to integrate with existing orchestration infrastructure.
 
 ## Next steps
+
+Start with one of the deployment paths, then come back for the optional tuning pages once your stack is up.
 
 <CardGroup cols={2}>
   <Card title="Docker Setup" icon="docker" href="/developers/self-hosted/docker">
@@ -103,5 +105,11 @@ Most teams start with Docker Compose. It's the fastest path to a working deploym
   </Card>
   <Card title="Kubernetes Deployment" icon="dharmachakra" href="/developers/self-hosted/kubernetes">
     Deploy to production with Kubernetes manifests
+  </Card>
+  <Card title="Credential Vaults" icon="vault" href="/developers/credentials/credential-vaults">
+    Pick a backend for credential storage (Bitwarden, Azure Key Vault, 1Password, custom)
+  </Card>
+  <Card title="Cleanup Cron" icon="broom" href="/developers/self-hosted/cleanup-cron">
+    Reclaim temp files and kill stale browser processes on long-lived hosts
   </Card>
 </CardGroup>

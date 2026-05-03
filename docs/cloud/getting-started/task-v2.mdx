@@ -1,0 +1,158 @@
+---
+title: Task v2 (Observer)
+subtitle: The thinking agent that plans, iterates, and adapts mid-run
+description: Understand Skyvern's Task v2 (Observer/Cruise) execution engine: how it differs from Task v1, what thoughts are, how to read the v2 timeline, and when to pick it.
+slug: cloud/getting-started/task-v2
+keywords:
+  - task v2
+  - observer
+  - cruise
+  - skyvern-2.0
+  - thoughts
+  - planning agent
+  - iterations
+---
+
+Task v2 is Skyvern's iterative planning engine. Instead of running a single LLM loop and hoping the goal is reachable, v2 alternates between a *planning* layer that decides what to do next and an *execution* layer that carries it out. You'll meet it whenever you pick the **Skyvern 2.0** engine in the Cloud UI or pass `engine="skyvern-2.0"` from code. By the end of this page, you'll know when to reach for v2, what shows up in its timeline, and how its limits differ from v1.
+
+## How Task v2 differs from v1
+
+Both engines share the same browser, the same action vocabulary, and the same artifact pipeline. The split is in how they decide what to do.
+
+Task v1 (`skyvern-1.0`) takes your prompt, screenshots the page, asks an LLM for the next action, executes it, and repeats until the goal is met or the step ceiling is hit. It uses fewer planner calls, but if the page demands a multi-step strategy that wasn't obvious from the first screenshot, v1 can get stuck in a local loop.
+
+Task v2 (`skyvern-2.0`) wraps that inner loop in an outer "observer" that produces structured *thoughts*: observations about what just happened, plans for the next phase, and check-ins on whether the goal is reachable. Every thought is a real LLM call with token and cost accounting, and each one can re-plan the remaining work. When v2 decides the current approach won't succeed, it pivots instead of grinding through extra steps.
+
+The full enum lives in `skyvern/schemas/runs.py`:
+
+```python
+class RunEngine(StrEnum):
+    skyvern_v1 = "skyvern-1.0"
+    skyvern_v2 = "skyvern-2.0"
+    openai_cua = "openai-cua"
+    anthropic_cua = "anthropic-cua"
+    ui_tars = "ui-tars"
+```
+
+The CUA engines (OpenAI, Anthropic, UI-TARS) are separate computer-use providers, not v2. This page is only about `skyvern-2.0`.
+
+## When to pick Task v2
+
+Pick v2 when the work needs judgment, not just precision. Concretely:
+
+- **Goals that span sections of a site.** "Find the report for last quarter and email it to me" is a v2 goal because the agent has to navigate, decide what to extract, and act on the result.
+- **Workflows that branch on what the page says.** If the next step depends on whether you see "Accept terms" or "Continue to payment," v2's planning layer handles that cleanly; v1 may overshoot.
+- **You want a workflow at the end.** Set `publish_workflow=True` (which forces the engine to v2 in `TaskRunRequest._force_v2_for_publish_workflow`) and Skyvern saves the successful run as a reusable workflow.
+
+Stick with v1 when the task is short, the path is obvious, and you'd rather pay for fewer LLM calls. v1 starts with `MAX_STEPS_PER_RUN=10` and a single planning context. v2 starts with `MAX_STEPS_PER_TASK_V2=25` and `MAX_ITERATIONS_PER_TASK_V2=10`, so each run is longer-running and more expensive on average.
+
+## Thoughts: what they are and how to read them
+
+A v2 run is a sequence of *thoughts*. Each thought is recorded in the `observer_thoughts` table (`ThoughtModel` in `skyvern/forge/sdk/db/models.py:905-936`) with the same kind of metadata Skyvern records for an LLM call: input/output/reasoning/cached token counts, dollar cost, model name, and the structured `output` JSON the planner produced.
+
+The relevant columns:
+
+| Column | What it captures |
+|---|---|
+| `observer_thought_type` | The phase of reasoning (e.g., `plan`, the default). |
+| `observer_thought_scenario` | A sub-classifier the planner sets. |
+| `user_input` | The user prompt or context the planner saw. |
+| `observation` | What the agent noticed about the current page. |
+| `thought` | The planner's reasoning in prose. |
+| `answer` | The decision or instruction passed to execution. |
+| `output` | Structured JSON the planner produced (e.g., the next sub-goal). |
+| `input_token_count`, `output_token_count`, `reasoning_token_count`, `cached_token_count`, `thought_cost` | Per-thought LLM accounting. |
+
+In the Cloud UI, thoughts appear interleaved with steps and actions on the run detail page. Read a thought with the surrounding steps to understand why the agent chose the next action.
+
+Each thought also carries a `thought_type` from a small enum at `skyvern/forge/sdk/schemas/task_v2.py:121-134`:
+
+| Thought type | When the planner emits it |
+|---|---|
+| `plan` | Default. The planner just decided what to do next. |
+| `metadata` | Bookkeeping (titles, summaries) the planner writes alongside a plan. |
+| `user_goal_check` | The planner is checking whether the run has reached the user's goal. |
+| `internal_plan` | A plan that's part of internal scaffolding, not user-facing strategy. |
+| `failure_describe` | The planner is recording why a sub-step failed. |
+| `termination` | The planner is ending the run on purpose. |
+
+The column is stored as `VARCHAR`, not a Postgres enum, so new types can ship without a migration. If you see a `thought_type` you don't recognize, the source-of-truth enum is the place to confirm it's real.
+
+## The unified timeline
+
+For both v2 and workflow runs, `GET /v1/runs/{run_id}/timeline` returns one list that merges thoughts, steps, and per-block state. The endpoint is at `skyvern/forge/sdk/routes/agent_protocol.py:1743-1814`. The source sorts the list newest-first (`reverse=True`), so reverse it client-side when you want to replay the run from beginning to end.
+
+Here's the smallest reasonable call from the Skyvern SDK:
+
+```python
+import os
+from skyvern import Skyvern
+
+client = Skyvern(api_key=os.getenv("SKYVERN_API_KEY"))
+
+timeline = await client.get_run_timeline(run_id="tsk_v2_abc123")
+for event in reversed(timeline):
+    print(event.type, event.created_at)
+```
+
+Two things to know before you call this:
+
+- v2 runs are stored as `TaskV2Model` rows (table `observer_cruises`, `observer_cruise_id` is the run ID). The timeline endpoint resolves the linked `workflow_run_id` and flattens it on the fly, so you pass the v2 run ID directly.
+- If you call `/timeline` for a v1 task ID or a CUA run, the API returns 400. Timelines are only emitted for runs that have a planning layer.
+
+## Limits to plan around
+
+There are two limit layers to know about:
+
+| Setting | Default | What it caps |
+|---|---|---|
+| `MAX_STEPS_PER_TASK_V2` (`config.py:89`) | `25` | Browser actions inside any one Task v2 execution phase. |
+| `DEFAULT_MAX_ITERATIONS` (`services/task_v2_service.py:79`) | `50` | Standalone Task v2 planning iterations. Each iteration is a fresh "observe, plan, decide" cycle. |
+| `MAX_ITERATIONS_PER_TASK_V2` (`config.py:90`) | `10` | The default field value on `TaskV2BlockYAML.max_iterations`. In the current workflow block execution path, only the block's `max_steps` is passed into `run_task_v2`, so do not rely on this setting as the standalone planner cap. |
+
+Hitting the step or planner-iteration limit marks the Task v2 run as `failed`. A `terminated` run is different: the planner chose to stop because it decided the goal was unreachable. If you find yourself raising limits regularly, the prompt is usually too broad. Tighten the goal or split it across a workflow.
+
+## `terminated` vs `failed`
+
+These two final statuses look similar in the UI but mean different things, and treating them the same in alerting is a frequent mistake. The enum is at `skyvern/forge/sdk/schemas/task_v2.py:15-26`:
+
+- **`completed`**: the planner reported the goal was reached.
+- **`terminated`**: the planner *intentionally* stopped, usually because it decided the goal was unreachable. Thoughts of type `termination` will explain why. This is not a bug; it's the agent giving up cleanly.
+- **`failed`**: something went wrong outside the planner's control: an unhandled exception, a browser crash, a vault that became unreachable. These are worth paging on.
+- **`canceled`**: a human or another job called `POST /v1/runs/{run_id}/cancel`.
+- **`timed_out`**: the run hit its wall-clock timeout (separate from the step/iteration ceilings above).
+
+If you alert on `failed`, do *not* also alert on `terminated`; you'll get woken up for runs the agent decided itself it couldn't finish, which is usually a prompt or workflow problem, not an outage.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Run Your First Task"
+    icon="play"
+    href="/cloud/getting-started/run-your-first-task"
+  >
+    Try v2 from the Discover page.
+  </Card>
+  <Card
+    title="Run from Code"
+    icon="code"
+    href="/cloud/getting-started/run-from-code"
+  >
+    Pass `engine="skyvern-2.0"` from the SDK or HTTP API.
+  </Card>
+  <Card
+    title="Monitor a Run"
+    icon="eye"
+    href="/cloud/getting-started/monitor-a-run"
+  >
+    Read the live thoughts and steps as they happen.
+  </Card>
+  <Card
+    title="Build a Workflow"
+    icon="diagram-project"
+    href="/cloud/building-workflows/build-a-workflow"
+  >
+    Promote a successful v2 run to a reusable workflow with `publish_workflow=True`.
+  </Card>
+</CardGroup>
