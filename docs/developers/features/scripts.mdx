@@ -67,6 +67,22 @@ When a workflow run starts, Skyvern looks up `(workflow_permanent_id, cache_key_
 
 This is why most workflows use the *target URL* or *account ID* as a cache key. Two runs against the same login look the same; two runs against different sites do not.
 
+### When the cache key is empty or `default`
+
+If the workflow has no `cache_key` set, or if the rendered value comes out as the literal string `default` or empty, Skyvern auto-enriches by appending the first block's domain (`skyvern/services/workflow_script_service.py:346-360`). Two runs against `example.com` will share a cached script, runs against `acme.com` will not, even though neither workflow declared a key. For known recruiting platforms (Workday, Greenhouse, etc.) the function uses an ATS platform identifier instead of the domain, so all employers on the same platform share one cached script. The platform detector is `app.AGENT_FUNCTION.detect_ats_platform`.
+
+If you don't want this behavior, set an explicit `cache_key` on the workflow.
+
+### Adaptive caching ("Code 2.0") namespacing
+
+The newer adaptive caching path appends `:v2` to whatever cache key it produces (`workflow_script_service.py:362-365`), so adaptive scripts and traditional cached scripts never collide on the same key. You'll see this in logs as `cache_key_value=https://example.com:v2`.
+
+### Parameter changes invalidate the cache
+
+The cache lookup keys on `(organization_id, workflow_permanent_id, cache_key_value)`, none of which change when you edit the workflow's parameter list. Without an extra check, the old cached code (which has no reference to the new parameter) would keep getting served. Skyvern guards against this by re-comparing parameter sets against the cached script and invalidating the entry if they've drifted (`workflow_script_service.py:386-401`, ticket `SKY-9254`). The next run regenerates a script that knows about the new parameter.
+
+The implication: editing a workflow's parameters and re-running it is the supported way to force a regeneration. You don't need to clear the cache manually.
+
 ## Pinning a version
 
 By default the latest published version is replayed. When you want to lock to one — say, you've audited v3 and don't trust auto-promotion — pin it:

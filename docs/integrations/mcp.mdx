@@ -61,6 +61,12 @@ skyvern setup hermes
 
 The setup commands live in `skyvern/cli/setup_commands.py`. Each one writes an `mcpServers` entry into the tool's config (`~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, etc.) pointing at `python -m skyvern run mcp` for stdio clients or `https://api.skyvern.com/mcp/` over HTTP for cloud-only clients like Claude Desktop.
 
+<Note>
+Before overwriting an existing config, `skyvern setup` copies it to `<config>.bak-YYYYMMDD-HHMMSS-mmmmmm` next to the original (`setup_commands.py:351-365`, using `shutil.copy2` so file permissions are preserved). The original is overwritten with the new JSON — the backup is your rollback. The CLI prints `Backup saved to <path>` after a successful write so you can find it.
+
+If your existing config can't be parsed (malformed JSON, unexpected schema), `skyvern setup` aborts with `"Cannot parse <path>. Fix the JSON and re-run."` and never writes. No backup is created in that case because nothing is being overwritten.
+</Note>
+
 After registering, restart the tool. The MCP server should show up in its tools list within a few seconds.
 
 ## 3. Verify the connection

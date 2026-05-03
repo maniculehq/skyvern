@@ -55,6 +55,10 @@ Reach for a session when the work happens *now* and benefits from a warm browser
 
 Sessions auto-close when their timeout expires, even mid-run. Pad your timeouts.
 
+<Warning>
+Session timeout enforcement is *passive*. A session whose `started_at + timeout_minutes` is in the past is treated as invalid the next time something asks for it (the streaming endpoint at `skyvern/forge/sdk/routes/streaming/verify.py:61-77` is the typical caller), but the underlying browser is *not* forcibly killed at the moment the timeout fires. You will see the session marked as no-longer-streamable, then it tears down on the next housekeeping pass. Don't rely on `timeout_minutes` as a hard kill switch; if you need a guaranteed cap on a long run, set the *run*'s timeout, not just the session's.
+</Warning>
+
 ## When to use a profile
 
 Reach for a profile when the work will happen *later* and you want to skip the boring parts:

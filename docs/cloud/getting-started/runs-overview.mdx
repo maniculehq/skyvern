@@ -98,6 +98,24 @@ You don't typically need to touch the child run directly. The parent ID is the o
 
 `GET /v1/runs` supports the filters you'd expect from the Runs page: status, run type, workflow ID, date range, and free-text search across `searchable_text` (a tsvector-style column on `task_runs`). The Cloud UI's Runs page is just a thin view on this endpoint, which is why the same filters work in code.
 
+## Webhooks: what to expect
+
+When a run reaches a final status, Skyvern POSTs the run payload to the `webhook_callback_url` you set on the request. Two things matter for receivers:
+
+**Signature.** Each delivery carries `x-skyvern-timestamp` (Unix seconds) and `x-skyvern-signature` (HMAC-SHA256 of the normalized JSON body, keyed with your API key). Verify both before trusting the payload. The signing function is at `skyvern/forge/sdk/core/security.py:75-95`.
+
+```python
+import hmac, hashlib
+
+def verify(api_key: str, body: bytes, signature: str) -> bool:
+    expected = hmac.new(api_key.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+**No automatic retries.** Skyvern delivers each webhook once. A 5xx response or a timeout does *not* trigger an automatic retry. If the receiver was down, call `POST /v1/runs/{run_id}/retry_webhook` to re-fire it (replay paths through `skyvern/services/webhook_service.py:482-507` are also one-shot, they just give you a new attempt). Timeouts vary by path: 60 seconds for the main run-completion delivery, 30 seconds for v2 status updates. Either way, retries are your job.
+
+The implication: receivers must be idempotent. If you respond `200` and then your handler crashes, the run is already marked delivered. Persist the work *before* you return success.
+
 ## Next steps
 
 <CardGroup cols={2}>

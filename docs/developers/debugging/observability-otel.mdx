@@ -58,6 +58,10 @@ OTEL_EXPORTER_INSECURE=true
 
 Restart the Skyvern container and you should see `OTEL tracer provider initialized before forge app creation` in the logs. If you don't, the `cloud.observability.otel_setup` import failed silently — usually because the `cloud` extras aren't installed.
 
+<Warning>
+The `ImportError` for `cloud.observability.otel_setup` is caught and swallowed (`skyvern/forge/api_app.py:198-204`); `OTEL_ENABLED=true` *without* the cloud extras is therefore a no-op with no error. The only signal you get is the absence of the "OTEL tracer provider initialized" line. If the import succeeds but initialization throws (bad endpoint, TLS misconfiguration, unreachable collector), you'll see a `Failed to initialize OTEL tracer provider early` warning at line 211 and the rest of the app continues without tracing. Grep for those two strings on first boot to confirm OTel is actually live.
+</Warning>
+
 ## Targeting common backends
 
 Most managed backends accept OTLP-gRPC on port 4317 or OTLP-HTTP on 4318. The endpoint variable is the only thing that changes per backend; pick the protocol your collector expects.
@@ -95,7 +99,9 @@ If you want to drop specific instrumentations entirely (say, you don't care abou
 
 ## Running OTel and Laminar together
 
-Both providers can be on at once. Skyvern initializes OTel first (so the DB and HTTP layers are instrumented), then Laminar after the forge app starts (`forge/api_app.py:216-232`) so it can wrap LiteLLM. The two backends will end up with different views of the same run, which is usually the point: OTel for ops, Laminar for LLM behavior.
+Both providers can be on at once. Skyvern initializes OTel first (so the DB and HTTP layers are instrumented), then Laminar after the forge app starts (`forge/api_app.py:215-232`) so it can wrap LiteLLM. The two backends will end up with different views of the same run, which is usually the point: OTel for ops, Laminar for LLM behavior.
+
+The ordering matters. If you tried to initialize Laminar first, its `LiteLLM` wrapping would happen before `start_forge_app()` constructed the LLM clients, and your LLM calls wouldn't be traced. Skyvern enforces the order regardless of how the two flags are set; you can't reverse it through configuration.
 
 ```bash
 # OTel for everything except LLMs.
