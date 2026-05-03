@@ -54,7 +54,7 @@ A `SkyvernBrowser` instance backed by a live Playwright `BrowserContext` connect
 - `get_working_page()` / `getWorkingPage()` — the current foreground page wrapped with the AI helpers (`page.act`, `page.extract`, `page.agent.run_task`, etc.).
 - `new_page()` / `newPage()` — open a new tab in the same session.
 - `browser_session_id` — the cloud session ID (also returned by `create_browser_session`). You can resume this session later with [`connect_to_cloud_browser_session`](/sdk-reference/browser-automation/connect-to-cloud-browser-session).
-- `close()` — close the local Playwright context. The cloud session continues running until its `timeout` elapses or you call `close_browser_session(session_id)`.
+- `close()` — close the local Playwright context and the cloud session. Because the returned browser carries a `browser_session_id`, `close()` calls `close_browser_session(session_id)` for you, marking the cloud session completed. To detach without ending the cloud session, skip `close()` and reconnect later with [`connect_to_cloud_browser_session`](/sdk-reference/browser-automation/connect-to-cloud-browser-session).
 
 When `SkyvernEnvironment.CLOUD` is in use, the SDK logs a `https://app.skyvern.com/browser-session/<id>` URL on launch so you can watch the session live in the dashboard.
 

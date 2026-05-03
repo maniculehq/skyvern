@@ -63,18 +63,18 @@ The call blocks until the run reaches a terminal status (`completed`, `failed`, 
 | Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
 |--------------------|----------------|------|----------|---------|-------------|
 | `prompt` | first positional arg | `str` / `string` | Yes | — | Natural-language description of what to do. |
-| `engine` | `engine` | `RunEngine` | No | `skyvern_v1` | Which agent engine to use. See [engines](#engines) below. |
+| `engine` | `engine` | `RunEngine` | No | `RunEngine.skyvern_v1` / `skyvern-1.0` | Which agent engine to use. See [engines](#engines) below. |
 | `model` | `model` | `dict` / `Record<string, unknown>` | No | `None` | Per-call LLM overrides forwarded to the worker. |
 | `url` | `url` | `str` / `string` | No | current page URL | Where to navigate before the task runs. If the page is on `about:blank`, this becomes required. |
 | `data_extraction_schema` | `dataExtractionSchema` | `dict \| str` | No | `None` | JSON Schema or schema string describing the desired structured output. |
 | `max_steps` | `maxSteps` | `int` / `number` | No | server default (`MAX_STEPS_PER_RUN`, `10`) | Hard cap on AI decision cycles. Each step is one screenshot-plan-act loop. |
-| `timeout` | `timeout` | `float` / `number` | No | `1800` | Seconds to wait for completion before raising `asyncio.TimeoutError`. |
+| `timeout` | `timeout` | `float` / `number` | No | `1800` | Seconds to wait for completion before raising `asyncio.TimeoutError` in Python or `Error` in TypeScript. |
 | `webhook_url` | `webhookUrl` | `str` / `string` | No | `None` | Webhook fired when the run reaches a terminal state. |
 | `totp_identifier` | `totpIdentifier` | `str` / `string` | No | `None` | Identifier (email, phone) the agent uses to fetch a 2FA code. |
 | `totp_url` | `totpUrl` | `str` / `string` | No | `None` | URL the agent calls to fetch a 2FA code. |
 | `title` | `title` | `str` / `string` | No | `None` | Human-readable run name shown in the dashboard. |
 | `error_code_mapping` | `errorCodeMapping` | `dict` / `Record<string, string>` | No | `None` | Map raw failure messages to your own error codes. Surfaces in the response. |
-| `user_agent` | `userAgent` | `str` / `string` | No | `None` | Override the browser User-Agent for this run. |
+| `user_agent` | — | `str` | No | `None` | Python only. Override the browser User-Agent for this run. |
 
 The agent automatically forwards `browser_session_id` and `browser_address` from the surrounding `SkyvernBrowser`, so you do not need to pass them.
 
@@ -99,13 +99,13 @@ A [`TaskRunResponse`](/sdk-reference/tasks/run-task#returns-taskrunresponse) wit
 
 ## Engines
 
-| `engine` value | Source | When to use |
-|----------------|--------|-------------|
-| `skyvern_v1` (default) | `task_v1` execution path | Fastest, cheapest. Best for narrow, well-scoped tasks. |
-| `skyvern_v2` | `task_v2` execution path | Stronger planning. Best for multi-page, branching tasks. |
-| `openai_cua` | OpenAI Computer Use Agent | Computer-use models from OpenAI. |
-| `anthropic_cua` | Anthropic Computer Use Agent | Computer-use models from Anthropic. |
-| `ui_tars` | UI-TARS | Open-source vision-driven agent. |
+| Python enum member | API / TypeScript value | Source | When to use |
+|--------------------|------------------------|--------|-------------|
+| `RunEngine.skyvern_v1` (default) | `skyvern-1.0` | `task_v1` execution path | Default task-v1 loop for narrow, well-scoped tasks. |
+| `RunEngine.skyvern_v2` | `skyvern-2.0` | `task_v2` execution path | Planner/observer path for multi-page or branching tasks. |
+| `RunEngine.openai_cua` | `openai-cua` | OpenAI Computer Use Agent | Computer-use models from OpenAI. |
+| `RunEngine.anthropic_cua` | `anthropic-cua` | Anthropic Computer Use Agent | Computer-use models from Anthropic. |
+| `RunEngine.ui_tars` | `ui-tars` | UI-TARS | Open-source vision-driven agent. |
 
 Self-hosted users need the matching provider enabled in `.env` (see [LLM Configuration](/developers/self-hosted/llm-configuration)).
 

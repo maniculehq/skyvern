@@ -14,7 +14,7 @@ The credential never leaves the browser layer. The LLM sees placeholder tokens (
 
 ## Examples
 
-The first argument you pass is `credential_type`, which selects one of four overloads. Each overload has its own required parameters.
+The credential type selects one of four overloads. In Python, pass it with the `credential_type=` keyword; in TypeScript, pass it as the first argument. Each overload has its own required parameters.
 
 ### Skyvern-stored credential
 
@@ -110,14 +110,14 @@ Common parameters apply to every overload. Provider-specific parameters are requ
 
 | Parameter (Python) | Parameter (TS) | Type | Required | Default | Description |
 |--------------------|----------------|------|----------|---------|-------------|
-| `credential_type` | first positional arg | `CredentialType` / `string` | Yes | — | One of `skyvern`, `bitwarden`, `onepassword`, `azure_vault`. |
+| `credential_type` | first positional arg | `CredentialType` / `string` | Python: No; TS: Yes | Python: `CredentialType.skyvern`; TS: — | API and TypeScript values are `skyvern`, `bitwarden`, `1password`, and `azure_vault`. In Python, use `CredentialType.onepassword` for the 1Password member. |
 | `url` | `url` | `str` / `string` | No | current page URL | Login page to navigate to. Required when the page is on `about:blank`. |
 | `prompt` | `prompt` | `str` / `string` | No | `None` | Extra instructions for the agent (e.g. "click the SSO button before typing"). |
 | `webhook_url` | `webhookUrl` | `str` / `string` | No | `None` | Webhook fired when the login workflow reaches a terminal status. |
 | `totp_identifier` | `totpIdentifier` | `str` / `string` | No | `None` | Email or phone number used to fetch a 2FA code. See [TOTP types](#totp-types). |
 | `totp_url` | `totpUrl` | `str` / `string` | No | `None` | URL the agent polls to retrieve a TOTP code on demand. |
 | `extra_http_headers` | `extraHttpHeaders` | `dict` / `object` | No | `None` | Headers added to every request the browser makes during login. |
-| `timeout` | `timeout` | `float` / `number` | No | `1800` | Seconds to wait for completion before raising `asyncio.TimeoutError`. |
+| `timeout` | `timeout` | `float` / `number` | No | `1800` | Seconds to wait for completion before raising `asyncio.TimeoutError` in Python or `Error` in TypeScript. |
 
 ### Provider-specific
 

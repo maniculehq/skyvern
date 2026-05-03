@@ -38,14 +38,14 @@ Every run transitions through these states:
 | `queued` | Waiting for an available browser |
 | `running` | AI is navigating and executing |
 | `completed` | Success. Check `output` for results |
-| `failed` | System error (browser crash, network failure, exception) |
+| `failed` | System error (browser crash, network failure, exception) or a budget cap fired (`MAX_STEPS_PER_RUN`, `MAX_RETRIES_PER_STEP`). Read `failure_reason` to tell them apart. |
 | `terminated` | AI determined the goal is unachievable (login blocked, page unavailable) |
-| `timed_out` | Exceeded `max_steps` or time limit |
+| `timed_out` | The workflow run was timed out (e.g. by an external scheduler), which cascaded to the task |
 | `canceled` | Manually stopped |
 
 **Terminal states:** `completed`, `failed`, `terminated`, `timed_out`, `canceled`
 
-You can detect failures in two ways: 
+You can detect failures in two ways:
 
 1. by polling `get_run`
 2. by checking the webhook payload
@@ -208,19 +208,21 @@ done
 
 **`failed` vs `terminated`:** A `failed` run hit infrastructure problems, so retry might work. A `terminated` run means the AI recognized the goal is unachievable with current conditions. Retrying without changes (new credentials, different URL) will produce the same result.
 
-### How `timed_out` and step-level `failed` differ
+### Two ways a run ends up `failed`: budget vs retry
 
-The two server-config knobs that bound a run interact in a way that surprises people:
+Two server-config knobs both bound a run, and both surface as `status=failed` with different `failure_reason` text. Reading the reason is how you tell which knob tripped:
 
-| Setting | Default | Triggers |
-|---------|---------|----------|
-| `MAX_STEPS_PER_RUN` (`max_steps` on the call) | 10 | When the next successful step would push the count past the cap, the run ends with `status=timed_out` and `failure_reason="Reached the maximum steps (...)"`. |
-| `MAX_RETRIES_PER_STEP` | 5 | When a single step fails its retry budget, the run ends with `status=failed` and `failure_reason="Max retries per step (...) exceeded"`. |
+| Setting | Default | Trigger condition | `failure_reason` starts with |
+|---------|---------|-------------------|------------------------------|
+| `MAX_STEPS_PER_RUN` (`max_steps` on the call) | 10 | Successful step count reached the cap. | `"Reached the maximum steps (...)"` (task v1) or `"Reached the max number of N steps."` (task v2) |
+| `MAX_RETRIES_PER_STEP` | 5 | A single step has failed its retry budget. | `"Max retries per step (...) exceeded"` |
 
-Retries do not consume your step budget — Skyvern reuses the same `step.order` and only advances on success. So a 10-step run can in principle make `10 × (1 + 5) = 60` agent cycles before exiting, but only the 10 successful ones count against `max_steps`. Two things follow:
+Retries do not consume your step budget — Skyvern creates a new `Step` row with the same `order` and `retry_index + 1`, and only advances `order` on success. So a 10-step run can in principle make `10 × (1 + 5) = 60` agent cycles before exiting, but only the 10 successful ones count against `max_steps`. Two things follow:
 
-- A run that ends with `failed` and a `Max retries per step` reason is stuck on a *single* step. Look at the screenshots near the run's tail to see which one. Increasing `max_steps` will not help — fix the prompt, the credentials, or the page selector.
-- A run that ends with `timed_out` got through some real steps but ran out of room. Either raise `max_steps` or split the task into shorter `agent.run_task` calls so each gets its own budget.
+- A run with `Max retries per step` in the reason is stuck on a *single* step. Look at the screenshots near the run's tail to see which one. Raising `max_steps` will not help — fix the prompt, the credentials, or the page selector.
+- A run with `Reached the maximum steps` in the reason got through real steps but ran out of room. Either raise `max_steps` or split the task into shorter `agent.run_task` calls so each gets its own budget.
+
+`status=timed_out` is a separate signal: it is set at the workflow-run layer (for example by an external scheduler timeout) and propagates down to the task. Reaching `MAX_STEPS_PER_RUN` does not produce `timed_out`.
 
 ---
 
@@ -336,7 +338,7 @@ fi
 
 ## Step 3: Use `error_code_mapping`
 
-`failure_reason` contains an AI-generated description of what went wrong. Define custom error codes to get consistent, actionable error messages. 
+`failure_reason` contains an AI-generated description of what went wrong. Define custom error codes to get consistent, actionable error messages.
 
 When the run fails, Skyvern evaluates your natural language error descriptions against the page state and returns the matching code.
 
