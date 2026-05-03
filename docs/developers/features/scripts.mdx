@@ -42,18 +42,23 @@ A run produces v1, real traffic surfaces fallback episodes, the reviewer turns t
 
 ## Triggering generation
 
-The workflow run sets `generate_script` (column on `TaskV2Model`, runtime parameter on the v2 service) when you want a script captured. From code:
+Script generation is *not* a per-call SDK parameter. There are two ways to turn it on, both at the workflow level:
+
+- **Set `generate_script_on_terminal=True` on the workflow definition** (`skyvern/schemas/workflows.py:1178`). Whenever a run of that workflow finishes in `completed` or `terminated` state, Skyvern emits a script.
+- **Run a Task v2 with `publish_workflow=True`** on the task request (`skyvern/library/skyvern.py:294`). The successful v2 run is materialized as a workflow *and* recorded as that workflow's first script:
 
 ```python
-result = await client.run_workflow(
-    workflow_id="wpid_abc123",
-    parameters={"target_url": "https://example.com"},
-    generate_script=True,
+result = await client.run_task(
+    prompt="Find the report for last quarter and email it to me.",
+    engine="skyvern-2.0",
+    publish_workflow=True,
     wait_for_completion=True,
 )
 ```
 
 When the run completes successfully, Skyvern pulls the recorded actions, screenshots, and block I/O, and emits the script's files plus per-block functions. The relevant services live at `skyvern/services/script_service.py` and `skyvern/services/workflow_script_service.py`. `SCRIPT_GENERATION_LLM_KEY` (`config.py:229-231`) controls which model handles the generation step itself.
+
+Internally the workflow service flips a request-scoped `generate_script` flag on the `SkyvernContext` (`skyvern/forge/sdk/workflow/service.py:1340-1350`) so the agent loop knows to record what it does. You don't set that flag yourself; the two switches above are the only public surface.
 
 ## Replay decisions: cache keys
 
@@ -63,7 +68,7 @@ Two pieces decide whether a future run replays the script.
 
 **`cache_key_value`** is what that template renders to for a given run. Two runs with the same rendered value are treated as the same replay context.
 
-When a workflow run starts, Skyvern looks up `(workflow_permanent_id, cache_key_value)`. If a script is published for that pair, it replays. If not, the agent runs and (if `generate_script=True`) becomes the script for next time.
+When a workflow run starts, Skyvern looks up `(workflow_permanent_id, cache_key_value)`. If a script is published for that pair, it replays. If not, the agent runs and (if the workflow has `generate_script_on_terminal=True`, or the run came from a v2 task with `publish_workflow=True`) the run becomes the script for next time.
 
 This is why most workflows use the *target URL* or *account ID* as a cache key. Two runs against the same login look the same; two runs against different sites do not.
 
@@ -85,16 +90,17 @@ The implication: editing a workflow's parameters and re-running it is the suppor
 
 ## Pinning a version
 
-By default the latest published version is replayed. When you want to lock to one — say, you've audited v3 and don't trust auto-promotion — pin it:
+By default the latest published version is replayed. When you want to lock to one — say, you've audited v3 and don't trust auto-promotion — pin it via the HTTP API. The pin and unpin endpoints are not in the public OpenAPI schema (`include_in_schema=False`) and are not exposed on the Python SDK; call them directly with the `x-api-key` header:
 
-```python
-await client.pin_workflow_script(
-    workflow_permanent_id="wpid_abc123",
-    cache_key_value="https://example.com",
-)
+```bash
+curl -X POST \
+  -H "x-api-key: $SKYVERN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"cache_key_value": "https://example.com"}' \
+  https://api.skyvern.com/v1/scripts/wpid_abc123/pin
 ```
 
-Endpoint: `POST /v1/scripts/{workflow_permanent_id}/pin` (`skyvern/forge/sdk/routes/scripts.py:1186-1221`). Unpin with the matching `/unpin` endpoint.
+Endpoint: `POST /v1/scripts/{workflow_permanent_id}/pin` (`skyvern/forge/sdk/routes/scripts.py:1186-1221`). Unpin with the matching `/unpin` endpoint and the same `cache_key_value` body.
 
 Pinning sets `WorkflowScriptModel.pinned_at` (`forge/sdk/db/models.py:1197-1230`). Once pinned, the cache lookup ignores newer versions even if they exist, so an experimental v4 won't accidentally take over production traffic.
 
@@ -111,15 +117,17 @@ The new version starts unpublished. Promote it (or pin it) when you're ready.
 
 ## The script reviewer
 
-When a replay can't proceed because the page drifted, Skyvern records a *fallback episode* (`ScriptFallbackEpisodeModel`, `db/models.py:1298-1349`). When you've accumulated enough of those to be sure the script needs help, ask the reviewer to fix it:
+When a replay can't proceed because the page drifted, Skyvern records a *fallback episode* (`ScriptFallbackEpisodeModel`, `db/models.py:1298-1349`). When you've accumulated enough of those to be sure the script needs help, ask the reviewer to fix it. Like the pin endpoint, the review endpoint is internal-only (`include_in_schema=False`) and not exposed on the Python SDK; call it over HTTP:
 
-```python
-review = await client.review_script_with_instructions(
-    workflow_permanent_id="wpid_abc123",
-    workflow_run_id="wfr_xyz789",
-    user_instructions="When the cookie banner appears, dismiss it before continuing.",
-)
-print(review.updated_blocks)
+```bash
+curl -X POST \
+  -H "x-api-key: $SKYVERN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workflow_run_id": "wfr_xyz789",
+    "user_instructions": "When the cookie banner appears, dismiss it before continuing."
+  }' \
+  https://api.skyvern.com/v1/scripts/wpid_abc123/review
 ```
 
 Endpoint: `POST /v1/scripts/{workflow_permanent_id}/review` (`scripts.py:1281-1414`). The reviewer:
@@ -138,7 +146,7 @@ You'll occasionally want to throw a script away and let the agent re-learn the p
 - `DELETE /v1/scripts/{workflow_permanent_id}/value` removes a single cache-key value's script binding.
 - `DELETE /v1/scripts/{workflow_permanent_id}/cache` clears all cached scripts for the workflow at once (`scripts.py:1126-1173`).
 
-Both are soft deletes against `WorkflowScriptModel` plus an in-memory cache flush. The next run with `generate_script=True` will produce a new version from scratch.
+Both are soft deletes against `WorkflowScriptModel` plus an in-memory cache flush. The next run that satisfies the generation rules above will produce a new version from scratch.
 
 ## Self-hosted gating
 
