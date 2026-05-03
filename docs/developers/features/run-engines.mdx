@@ -25,15 +25,13 @@ The engine is set on the `engine` field of `run_task` (or the `engine` query/bod
 
 The last three are bundled by `CUA_ENGINES` in the same file: they are forwarded to a vendor's computer-use model (OpenAI's CUA, Anthropic's computer-use beta, ByteDance's UI-TARS) and run through Skyvern's task v1 dispatch path.
 
-## How the dispatcher routes engines
+## Pick an engine in 30 seconds
 
-When a request hits `POST /v1/run/tasks`, Skyvern reads `run_request.engine` and branches:
+- **Default to Skyvern 2.0.** The swarm engine handles long, multi-page flows and is the only engine that supports `publish_workflow=True`.
+- **Use Skyvern 1.0** for short, single-page tasks (form fills, single-page extracts) where v2's swarm is overkill.
+- **Use a CUA engine** (`openai-cua`, `anthropic-cua`, `ui-tars`) only when you specifically want the vendor's computer-use model picking actions instead of Skyvern's planner. They share v1's lifecycle but cost more and miss several Skyvern features.
 
-- `skyvern-1.0` and any of the three CUA engines run through `task_v1_service`. Skyvern allocates a single agent that walks the page step by step. CUA engines additionally hand control of action selection to the vendor model; Skyvern still drives the browser through Playwright.
-- `skyvern-2.0` runs through `task_v2_service`. The v2 engine is a swarm: Skyvern decomposes the prompt into sub-tasks, runs them in parallel where possible, and composes the result. v2 also writes the run as a workflow run row, which is why `app_url` for v2 points at `/runs/{workflow_run_id}` while v1 points at `/runs/{task_id}`.
-- Any other value yields `400 Bad Request` ("Invalid agent engine").
-
-This dispatch lives in `skyvern/forge/sdk/routes/agent_protocol.py:191-349`.
+The rest of this page expands each option with cost shape, feature support, and code samples.
 
 ## When to use which
 
@@ -97,6 +95,16 @@ For workflow blocks, the per-block engine is set in the block YAML (`engine: sky
 Step count is the dominant cost driver. v2 typically uses 2-4× the steps of v1 on the same prompt, but compresses several "v1 prompt + parse + repeat" cycles into one decision, so total wall-clock time is often lower. CUA engines vary by vendor pricing; at the time of writing Anthropic CUA is the most expensive per step and OpenAI CUA is comparable to v1.
 
 `max_steps` caps the budget: a v2 run that hits its cap returns with `status="timed_out"` and whatever output the swarm composed before being terminated.
+
+## How the dispatcher routes engines
+
+When a request hits `POST /v1/run/tasks`, Skyvern reads `run_request.engine` and branches:
+
+- `skyvern-1.0` and any of the three CUA engines run through `task_v1_service`. Skyvern allocates a single agent that walks the page step by step. CUA engines additionally hand control of action selection to the vendor model; Skyvern still drives the browser through Playwright.
+- `skyvern-2.0` runs through `task_v2_service`. The v2 engine is a swarm: Skyvern decomposes the prompt into sub-tasks, runs them in parallel where possible, and composes the result. v2 also writes the run as a workflow run row, which is why `app_url` for v2 points at `/runs/{workflow_run_id}` while v1 points at `/runs/{task_id}`.
+- Any other value yields `400 Bad Request` ("Invalid agent engine").
+
+This dispatch lives in `skyvern/forge/sdk/routes/agent_protocol.py:191-349`.
 
 ## Next steps
 

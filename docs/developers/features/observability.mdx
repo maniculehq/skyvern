@@ -21,6 +21,21 @@ Skyvern emits four kinds of telemetry, each useful for a different question. Thi
 
 For Laminar specifically there is already a dedicated page at [Observability with Laminar](/developers/debugging/observability-with-laminar). Use this page to decide which surface to reach for; drop into the Laminar page when you have decided on Laminar.
 
+## What to reach for, when
+
+Match the question you are actually asking to the tool. If you start with the wrong tool, you spend a lot of time ruling things out.
+
+| Question | Tool |
+|---|---|
+| "This single run failed. Why?" | structlog logs filtered by `run_id`. |
+| "The agent picked the wrong action on step 7." | Laminar trace for that run. |
+| "p99 of `/v1/run/tasks` doubled overnight." | OTEL metrics, then drill into traces. |
+| "How many runs hit `timed_out` last week?" | OTEL metrics, or DB query against `task_runs`. |
+| "Did the webhook actually fire?" | structlog logs filtered by `webhook_url` plus webhook log artifact (if `ENABLE_LOG_ARTIFACTS=True`). |
+| "Which feature do customers use most?" | PostHog dashboard. |
+
+The rest of this page is the deep dive on each surface, in the order most teams adopt them.
+
 ## structlog JSON logs
 
 Skyvern logs everything through structlog (`skyvern/forge/sdk/forge_log.py`). Every record is structured: a `request_id`, the org id, the run id, and the surrounding context are attached automatically by `request_middleware` (`skyvern/forge/api_app.py:283-300`).
@@ -84,19 +99,6 @@ SKYVERN_TELEMETRY=false
 Set in your `.env` and PostHog calls become no-ops. Use this for production deployments handling sensitive data or for air-gapped self-hosted setups.
 
 The MCP server has a separate PostHog project key (`MCP_POSTHOG_PROJECT_API_KEY`); the same `SKYVERN_TELEMETRY` switch turns it off.
-
-## What to reach for, when
-
-| Question | Tool |
-|---|---|
-| "This single run failed. Why?" | structlog logs filtered by `run_id`. |
-| "The agent picked the wrong action on step 7." | Laminar trace for that run. |
-| "p99 of `/v1/run/tasks` doubled overnight." | OTEL metrics, then drill into traces. |
-| "How many runs hit `timed_out` last week?" | OTEL metrics, or DB query against `task_runs`. |
-| "Did the webhook actually fire?" | structlog logs filtered by `webhook_url` plus webhook log artifact (if `ENABLE_LOG_ARTIFACTS=True`). |
-| "Which feature do customers use most?" | PostHog dashboard. |
-
-If you start with the wrong tool, you spend a lot of time ruling things out. The dispatcher above is the lookup we use ourselves.
 
 ## Next steps
 

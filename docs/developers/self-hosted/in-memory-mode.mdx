@@ -13,6 +13,16 @@ keywords:
 
 This page is the exhaustive list of what is missing in this mode, why it is missing, and what to use instead. For the broader "when to use embedded mode at all" conversation, see [Embedded mode](/developers/getting-started/embedded-mode).
 
+## Pick the right mode in one line
+
+- "I am writing tests." → `use_in_memory_db=True`.
+- "I am building a CLI tool that runs short tasks." → `use_in_memory_db=True`.
+- "I want my run history to survive restarts." → `use_in_memory_db=False` with Postgres.
+- "I need scheduled workflows." → Skyvern Cloud, or `skyvern run server` with the cloud extras installed.
+- "I need cloud browser sessions." → Skyvern Cloud.
+
+If your row landed on `use_in_memory_db=True`, the rest of this page tells you exactly which features will be missing and what the workaround is. If it landed elsewhere, jump straight to [Embedded mode](/developers/getting-started/embedded-mode) or the [self-hosted overview](./overview).
+
 ## The constraint, in one sentence
 
 In-memory mode is exactly the standalone server, minus anything that needs a durable database, a shared cache, or a separate worker process.
@@ -74,14 +84,6 @@ Persistent mode (in-process FastAPI + Postgres) lifts two of the four restrictio
 - Rate limiting works if you also configure Redis.
 
 Cloud browser sessions and multi-worker execution still require Skyvern Cloud or a full self-hosted deployment with all the services running. Persistent embedded mode is "the same FastAPI server you'd run with `skyvern run server`, just hosted in your Python process," which means it inherits the full server's capabilities and limitations.
-
-## Quick decision
-
-- "I am writing tests." → `use_in_memory_db=True`.
-- "I am building a CLI tool that runs short tasks." → `use_in_memory_db=True`.
-- "I want my run history to survive restarts." → `use_in_memory_db=False` with Postgres.
-- "I need scheduled workflows." → Skyvern Cloud, or `skyvern run server` with the cloud extras installed.
-- "I need cloud browser sessions." → Skyvern Cloud.
 
 ## Next steps
 
