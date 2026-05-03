@@ -147,16 +147,10 @@ Sessions are the right choice when you need:
 
 ## Sessions vs profiles
 
-| | Browser Session | Browser Profile |
-|---|----------------|-----------------|
-| **What it is** | Live browser instance | Saved snapshot of browser state |
-| **Lifetime** | Minutes to hours | Days to months |
-| **State** | Current page, cookies, open connections | Cookies, localStorage, session files |
-| **Billing** | Charged while open | No cost when not in use |
-| **Best for** | Back-to-back tasks, human-in-the-loop | Repeated logins, scheduled workflows |
+A session is a live browser; a profile is a saved snapshot of one. Use a session when you need a browser right now (back-to-back tasks, human-in-the-loop). Use a [profile](/cloud/browser-management/browser-profiles) when you want to skip a login on later runs.
 
 <Tip>
-Use a session when you need a live browser right now. Use a [profile](/cloud/browser-management/browser-profiles) when you want to save login state and reuse it later.
+For the full comparison, lifecycle diagram, and a picking rule of thumb, see [Profiles vs Sessions](/cloud/browser-management/profiles-vs-sessions).
 </Tip>
 
 ---
@@ -164,6 +158,13 @@ Use a session when you need a live browser right now. Use a [profile](/cloud/bro
 ## What's next
 
 <CardGroup cols={2}>
+  <Card
+    title="Profiles vs Sessions"
+    icon="scale-balanced"
+    href="/cloud/browser-management/profiles-vs-sessions"
+  >
+    Decide when to keep a browser open vs save its state for reuse
+  </Card>
   <Card
     title="Browser Profiles"
     icon="floppy-disk"

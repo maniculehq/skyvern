@@ -81,19 +81,24 @@ For sites with short-lived sessions (banks, healthcare portals), refresh profile
 
 ## Sessions vs profiles
 
-| | Browser Session | Browser Profile |
-|---|----------------|-----------------|
-| **What it is** | Live browser instance | Saved snapshot of browser state |
-| **Lifetime** | Minutes to hours | Days to months |
-| **State** | Current page, cookies, open connections | Cookies, localStorage, session files |
-| **Billing** | Charged while open | No cost when not in use |
-| **Best for** | Back-to-back tasks, human-in-the-loop | Repeated logins, scheduled workflows |
+A profile is the snapshot a session leaves behind. Use a profile when the work happens later (scheduled workflows, repeated logins). Use a [session](/cloud/browser-management/browser-sessions) when the work happens now and benefits from a warm browser.
+
+<Tip>
+For the full comparison, lifecycle diagram, and a picking rule of thumb, see [Profiles vs Sessions](/cloud/browser-management/profiles-vs-sessions).
+</Tip>
 
 ---
 
 ## What's next
 
-<CardGroup cols={3}>
+<CardGroup cols={2}>
+  <Card
+    title="Profiles vs Sessions"
+    icon="scale-balanced"
+    href="/cloud/browser-management/profiles-vs-sessions"
+  >
+    Decide when to save state and when to keep a browser open
+  </Card>
   <Card
     title="Browser Sessions"
     icon="browser"

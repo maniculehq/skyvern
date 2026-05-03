@@ -20,7 +20,7 @@ keywords:
 - **Self-hosted**: Skyvern's server can export full traces to Laminar, including every LLM call (prompts, responses, token usage), browser actions, and workflow step execution. See [self-hosted tracing setup](#self-hosted-tracing-setup) below.
 
 <Tip>
-Laminar traces complement [artifacts](/developers/debugging/using-artifacts). Use artifacts for per-run debugging (screenshots, recordings, logs) and Laminar for tracking patterns across runs (failure rates, response times, and which tasks are slowest).
+Laminar traces complement [artifacts](/developers/debugging/using-artifacts). Use artifacts for per-run debugging (screenshots, recordings, logs) and Laminar for tracking patterns across runs (failure rates, response times, and which tasks are slowest). For ops-level traces (HTTP, DB, browser actions) on a self-hosted deployment, see the parallel [OpenTelemetry integration](/developers/debugging/observability-otel) — Laminar and OTel can run side by side.
 </Tip>
 
 <Note>
@@ -212,6 +212,13 @@ No code changes needed. Once the env vars are set, traces appear in your Laminar
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card
+    title="Observability with OpenTelemetry"
+    icon="chart-line"
+    href="/developers/debugging/observability-otel"
+  >
+    Export ops-level traces, metrics, and logs to any OTLP collector
+  </Card>
   <Card
     title="Using Artifacts"
     icon="file-lines"
