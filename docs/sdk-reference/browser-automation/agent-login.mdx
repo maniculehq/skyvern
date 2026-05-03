@@ -6,7 +6,7 @@ slug: sdk-reference/browser-automation/agent-login
 
 `page.agent.login(...)` runs Skyvern's login workflow against the page you already have open. It picks the username, password, and (if configured) TOTP from the credential source you choose, types them into the right fields, and resolves any 2FA challenge — all without exposing the secret values to the LLM.
 
-It returns a `WorkflowRunResponse` and always blocks until login finishes, so the line right after the call can assume the page is authenticated.
+It returns a [`WorkflowRunResponse`](/sdk-reference/workflows/run-workflow#returns-workflowrunresponse) and always blocks until login finishes, so the line right after the call can assume the page is authenticated.
 
 <Note>
 The credential never leaves the browser layer. The LLM sees placeholder tokens (e.g. `placeholder_Xk9m_password`) while deciding *where* to type. See [Credentials Overview](/cloud/managing-credentials/credentials-overview) for the full security model.
@@ -128,6 +128,16 @@ Common parameters apply to every overload. Provider-specific parameters are requ
 | `CredentialType.onepassword` | `onepassword_vault_id`, `onepassword_item_id` |
 | `CredentialType.azure_vault` | `azure_vault_name`, `azure_vault_username_key`, `azure_vault_password_key`; `azure_vault_totp_secret_key` optional |
 
+## Returns
+
+[`WorkflowRunResponse`](/sdk-reference/workflows/run-workflow#returns-workflowrunresponse) for the login workflow. Inspect:
+
+- `status` — `completed` on a successful login. Anything else means the agent never confirmed the post-login state.
+- `failure_reason` — populated when `status` is `failed`, `terminated`, or `timed_out`.
+- `run_id` — pass it to [`get_run`](/sdk-reference/tasks/get-run) for full step-level details, or to the dashboard URL `https://app.skyvern.com/runs/<run_id>`.
+
+The browser tab you called this on is now authenticated. Subsequent `page.goto`, `page.click`, or `page.agent.run_task` calls inherit the session.
+
 ## TOTP types
 
 Skyvern supports three ways to obtain a 2FA code, set when you create the credential:
@@ -139,16 +149,6 @@ Skyvern supports three ways to obtain a 2FA code, set when you create the creden
 | `TEXT` | Code sent via SMS | A `totp_identifier` (E.164 phone number). Same polling model as email. |
 
 If a credential has no TOTP, the field is `NONE` and the agent skips the 2FA step entirely.
-
-## Returns
-
-`WorkflowRunResponse` for the login workflow. Inspect:
-
-- `status` — `completed` on a successful login. Anything else means the agent never confirmed the post-login state.
-- `failure_reason` — populated when `status` is `failed`, `terminated`, or `timed_out`.
-- `run_id` — pass it to [`get_run`](/sdk-reference/tasks/get-run) for full step-level details, or to the dashboard URL `https://app.skyvern.com/runs/<run_id>`.
-
-The browser tab you called this on is now authenticated. Subsequent `page.goto`, `page.click`, or `page.agent.run_task` calls inherit the session.
 
 ## Next steps
 
