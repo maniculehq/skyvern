@@ -66,6 +66,14 @@ When `SkyvernEnvironment.CLOUD` is in use, the SDK logs a `https://app.skyvern.c
 
 For session reuse and cost efficiency, use [`use_cloud_browser`](/sdk-reference/browser-automation/use-cloud-browser) instead.
 
+<Warning>
+**`timeout` and `proxy_location` are silently ignored when `use_cloud_browser` reuses an existing session.** Reuse picks the most recent idle session as-is — its remaining time is whatever was left of its original `timeout` (default 60 minutes). If you need a guaranteed lifetime or a specific proxy region for this run, call `launch_cloud_browser` instead so a fresh session is created with your settings applied.
+</Warning>
+
+<Note>
+**Sessions do not auto-extend.** If a long-running task hits the session's `timeout`, the cloud Chromium is torn down mid-task and the next Playwright operation raises a transport error. The SDK does not heartbeat or relaunch — set `timeout` generously (the cap is 1440 minutes / 24 hours) for tasks that may run long, or chain shorter tasks against `connect_to_cloud_browser_session` so each run starts with a known remaining budget.
+</Note>
+
 ## Next steps
 
 <CardGroup cols={2}>

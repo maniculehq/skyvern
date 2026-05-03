@@ -150,6 +150,20 @@ Skyvern supports three ways to obtain a 2FA code, set when you create the creden
 
 If a credential has no TOTP, the field is `NONE` and the agent skips the 2FA step entirely.
 
+### Polling behavior for `EMAIL` and `TEXT`
+
+When a credential is `EMAIL` or `TEXT`, Skyvern polls your `totp_url` (or its built-in inbox) for the inbound code. The polling loop has fixed bounds you cannot tune from the SDK call:
+
+| Setting | Default | Source |
+|---------|---------|--------|
+| Poll interval | 10 seconds | hard-coded in `poll_otp_value` |
+| Total polling timeout | 15 minutes | `VERIFICATION_CODE_POLLING_TIMEOUT_MINS` |
+| Initial wait before first poll | 40 seconds | `VERIFICATION_CODE_INITIAL_WAIT_TIME_SECS` |
+| Max consecutive fetch failures | 3 | `VERIFICATION_CODE_POLLING_MAX_CONSECUTIVE_FAILURES` |
+| Stored TOTP lifespan | 10 minutes | `TOTP_LIFESPAN_MINUTES` |
+
+If 15 minutes elapse without a code, or 3 consecutive `totp_url` calls fail in a row, the login workflow raises `NoTOTPVerificationCodeFound` and the run finishes with `failure_reason` populated. Self-hosted users can change these defaults via `.env` (the env var names match the table). Cloud users can lengthen polling effectively only by raising the call's `timeout` so the workflow does not exit before the 15-minute window does.
+
 ## Next steps
 
 <CardGroup cols={2}>

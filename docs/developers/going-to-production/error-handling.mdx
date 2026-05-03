@@ -208,6 +208,20 @@ done
 
 **`failed` vs `terminated`:** A `failed` run hit infrastructure problems, so retry might work. A `terminated` run means the AI recognized the goal is unachievable with current conditions. Retrying without changes (new credentials, different URL) will produce the same result.
 
+### How `timed_out` and step-level `failed` differ
+
+The two server-config knobs that bound a run interact in a way that surprises people:
+
+| Setting | Default | Triggers |
+|---------|---------|----------|
+| `MAX_STEPS_PER_RUN` (`max_steps` on the call) | 10 | When the next successful step would push the count past the cap, the run ends with `status=timed_out` and `failure_reason="Reached the maximum steps (...)"`. |
+| `MAX_RETRIES_PER_STEP` | 5 | When a single step fails its retry budget, the run ends with `status=failed` and `failure_reason="Max retries per step (...) exceeded"`. |
+
+Retries do not consume your step budget — Skyvern reuses the same `step.order` and only advances on success. So a 10-step run can in principle make `10 × (1 + 5) = 60` agent cycles before exiting, but only the 10 successful ones count against `max_steps`. Two things follow:
+
+- A run that ends with `failed` and a `Max retries per step` reason is stuck on a *single* step. Look at the screenshots near the run's tail to see which one. Increasing `max_steps` will not help — fix the prompt, the credentials, or the page selector.
+- A run that ends with `timed_out` got through some real steps but ran out of room. Either raise `max_steps` or split the task into shorter `agent.run_task` calls so each gets its own budget.
+
 ---
 
 ## Step 2: Read `failure_reason`

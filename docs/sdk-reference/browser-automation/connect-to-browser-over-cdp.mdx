@@ -47,6 +47,14 @@ A `SkyvernBrowser` connected to the existing browser context. If the browser alr
 - `get_working_page()` returns the foreground page wrapped with AI helpers.
 - `browser_address` exposes the same `cdp_url` you passed in, which downstream calls (like `agent.run_task`) forward to Skyvern so the cloud agent connects back to your browser.
 
+<Warning>
+**Multiple `connect_to_browser_over_cdp(...)` calls against the same browser share state.** The SDK always grabs `browser.contexts[0]`, so a second connection lands in the same context as the first, including its cookies and storage. To isolate flows, launch a separate Chrome (or a separate user-data-dir) per flow.
+</Warning>
+
+<Note>
+There is no heartbeat or auto-reconnect. If the underlying Chrome dies, the port closes, or a tunnel drops, the next operation against `page` raises a Playwright transport error. Handle this in your retry logic — Skyvern will not relaunch the browser for you.
+</Note>
+
 ## Self-hosted prerequisites
 
 If you are using the self-hosted server, set these in your `.env` so Skyvern's worker connects to your CDP browser instead of launching its own:
