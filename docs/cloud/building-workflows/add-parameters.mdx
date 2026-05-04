@@ -84,6 +84,10 @@ Navigate to {{ url }} and search for {{ search_term }}
 
 Any block field that accepts text supports parameter references.
 
+<Warning>
+**Typos in variable names render as empty strings by default.** Skyvern's templating mode is `lax` (set by the `WORKFLOW_TEMPLATING_STRICTNESS` env var on the server). In lax mode, `{{ persan }}` for a parameter named `persona` renders as an empty string and the run continues — there is no error, only a `Undefined Jinja variables` warning in the server logs. Set `WORKFLOW_TEMPLATING_STRICTNESS=strict` on a self-hosted server to make these failures loud (a `MissingJinjaVariables` exception is raised at render time).
+</Warning>
+
 ---
 
 ## Credential parameters
@@ -136,6 +140,11 @@ These variable names are built-in and cannot be used as parameter keys:
 | `workflow_id` | All blocks | The workflow's ID |
 | `workflow_permanent_id` | All blocks | The workflow's permanent ID |
 | `workflow_title` | All blocks | The workflow's title |
+| `current_date` | All blocks | Run's start date as `YYYY-MM-DD` (UTC). Useful for stamping outputs without an extra block. |
+
+<Note>
+`browser_session_id` is also injected into every block (the cloud browser session ID, or an empty string if none is attached), but it is not in the reserved-key list. Defining a parameter with the same name will not raise an error, though it will shadow the built-in inside that workflow.
+</Note>
 
 **Example in a loop:**
 ```

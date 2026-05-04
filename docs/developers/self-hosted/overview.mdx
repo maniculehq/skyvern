@@ -90,10 +90,79 @@ PostgreSQL 14+ is included in the Docker Compose setup. If you prefer an externa
 
 | Method | Best for |
 |--------|----------|
-| **Docker Compose** | Getting started, small teams, single-server deployments |
-| **Kubernetes** | Production at scale, teams with existing K8s infrastructure, high availability requirements |
+| **Embedded (`pip install skyvern`)** | Trying Skyvern on your laptop, quick local prototypes, single-developer use |
+| **Docker Compose** | Getting started on a server, small teams, single-host deployments |
+| **Kubernetes** | Production at scale, teams with existing K8s infrastructure, high-availability requirements |
 
-Most teams start with Docker Compose. It's the fastest path to a working deployment. Move to Kubernetes when you need horizontal scaling or want to integrate with existing orchestration infrastructure.
+Most teams start with Docker Compose. The embedded path is the fastest if you only need a local Skyvern to back the SDK or MCP integration; move to Docker when you want a long-running server, and to Kubernetes when you need horizontal scaling.
+
+## Try Skyvern locally with `pip`
+
+`skyvern quickstart` is a one-shot command that installs schema migrations, writes a default `.env`, provisions a local organization, mints an API key, and brings up the API and UI. It is the fastest way to verify your machine can run Skyvern end to end before you commit to Docker or Kubernetes.
+
+### 1. Install the package
+
+```bash
+pip install skyvern
+```
+
+The package requires Python 3.11+. If your default Python is older, use `pipx install skyvern` to keep Skyvern in an isolated environment.
+
+### 2. Run quickstart
+
+```bash
+skyvern quickstart
+```
+
+This wraps three other commands you can also run individually:
+
+- `skyvern init` writes a `.env` in the current directory and prepares `~/.skyvern/data.db` (SQLite). Use `skyvern init browser` later to (re)install Playwright's Chromium.
+- `skyvern run server` starts the FastAPI service on `http://localhost:8000`.
+- `skyvern run ui` starts the Vite UI on `http://localhost:8080`.
+
+On first server start, Skyvern auto-bootstraps the SQLite database if it is empty: it creates a local organization and an API key, and syncs the key into your `.env` as `SKYVERN_API_KEY`. The SDK (`Skyvern.local()`) and CLI both read `.env` from the current working directory, so subsequent commands work with no extra flags.
+
+### 3. Verify
+
+Hit the local API:
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+Or run a task from Python without any extra config — `Skyvern.local()` reads `.env` from the current working directory and connects to the embedded server in-process:
+
+```python
+from skyvern import Skyvern
+
+skyvern = Skyvern.local()
+result = await skyvern.run_task(
+    prompt="Get the title of the top post",
+    url="https://news.ycombinator.com",
+    wait_for_completion=True,
+)
+print(result.output)
+```
+
+### `Skyvern.local()` constraints to know
+
+- **One per process.** The embedded server is single-instance; calling `Skyvern.local()` while another embedded client is alive in the same Python process raises `RuntimeError("An embedded Skyvern client is already active in this process. Call aclose() on the existing client before creating a new one.")`. Use `await skyvern.aclose()` between embedded clients.
+- **Three settings cannot be overridden in embedded mode.** `OTEL_ENABLED` and `ENABLE_CLEANUP_CRON` are forced to `False`, and `DATABASE_STRING` is rewritten to a SQLite connection (file or in-memory). Pass `use_in_memory_db=True` to keep nothing on disk; otherwise the SQLite file at `~/.skyvern/data.db` is used. Settings are snapshotted before bootstrap and restored on `aclose()`, so a mid-test failure will not leave global config in an inconsistent state.
+- **Embedded mode does not start a public port.** Requests are served over an in-process ASGI transport, so other processes cannot reach this Skyvern. Run `skyvern run server` if you need an HTTP-reachable instance.
+
+### 4. Switch to Postgres or S3 when you outgrow it
+
+`skyvern quickstart` defaults to SQLite at `~/.skyvern/data.db` and local-disk artifact storage under the configured `ARTIFACT_STORAGE_PATH`. To move to a managed Postgres and S3, set these in `.env` and restart the server:
+
+```bash
+DATABASE_STRING=postgresql+psycopg://skyvern@db.example.com:5432/skyvern
+SKYVERN_STORAGE_TYPE=s3
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_ARTIFACTS=my-skyvern-artifacts
+```
+
+The same env file is what Docker Compose reads, so a successful local run carries over with no further changes. See [Storage Configuration](/developers/self-hosted/storage) for the full storage matrix and [Docker Setup](/developers/self-hosted/docker) for the multi-host story.
 
 ## Next steps
 
@@ -101,7 +170,13 @@ Most teams start with Docker Compose. It's the fastest path to a working deploym
   <Card title="Docker Setup" icon="docker" href="/developers/self-hosted/docker">
     Get Skyvern running in 10 minutes with Docker Compose
   </Card>
+  <Card title="LLM Configuration" icon="brain" href="/developers/self-hosted/llm-configuration">
+    Wire up OpenAI, Anthropic, Bedrock, Gemini, Ollama, or any OpenAI-compatible endpoint
+  </Card>
   <Card title="Kubernetes Deployment" icon="dharmachakra" href="/developers/self-hosted/kubernetes">
     Deploy to production with Kubernetes manifests
+  </Card>
+  <Card title="Storage Configuration" icon="database" href="/developers/self-hosted/storage">
+    Move artifacts off local disk to S3 or Azure Blob
   </Card>
 </CardGroup>
