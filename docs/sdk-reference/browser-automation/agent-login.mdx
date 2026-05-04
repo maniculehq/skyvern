@@ -158,7 +158,6 @@ When a credential is `EMAIL` or `TEXT`, Skyvern polls your `totp_url` (or its bu
 |---------|---------|--------|
 | Poll interval | 10 seconds | hard-coded in `poll_otp_value` |
 | Total polling timeout | 15 minutes | `VERIFICATION_CODE_POLLING_TIMEOUT_MINS` |
-| Initial wait before first poll | 40 seconds | `VERIFICATION_CODE_INITIAL_WAIT_TIME_SECS` |
 | Max consecutive fetch failures | 3 | `VERIFICATION_CODE_POLLING_MAX_CONSECUTIVE_FAILURES` |
 | Stored TOTP lifespan | 10 minutes | `TOTP_LIFESPAN_MINUTES` |
 

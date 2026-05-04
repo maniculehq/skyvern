@@ -140,8 +140,11 @@ These variable names are built-in and cannot be used as parameter keys:
 | `workflow_id` | All blocks | The workflow's ID |
 | `workflow_permanent_id` | All blocks | The workflow's permanent ID |
 | `workflow_title` | All blocks | The workflow's title |
-| `browser_session_id` | All blocks | ID of the cloud browser session attached to the run, or empty string if none |
 | `current_date` | All blocks | Run's start date as `YYYY-MM-DD` (UTC). Useful for stamping outputs without an extra block. |
+
+<Note>
+`browser_session_id` is also injected into every block (the cloud browser session ID, or an empty string if none is attached), but it is not in the reserved-key list. Defining a parameter with the same name will not raise an error, though it will shadow the built-in inside that workflow.
+</Note>
 
 **Example in a loop:**
 ```
